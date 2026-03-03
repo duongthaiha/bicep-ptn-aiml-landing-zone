@@ -75,6 +75,9 @@ param principalType string = 'User'
 @description('Tags to apply to all resources in the deployment')
 param deploymentTags object = {}
 
+@description('Label used for App Configuration key-value pairs.')
+param appConfigLabel string = 'ai-lz'
+
 @description('Enable network isolation for the deployment. This will restrict public access to resources and require private endpoints where applicable.')
 param networkIsolation bool = false
 
@@ -2839,6 +2842,7 @@ module appConfig 'br/public:avm/res/app-configuration/configuration-store:0.9.1'
 module containerAppsSettings 'modules/container-apps/container-apps-list.bicep' = if (deployContainerApps) {
   name: 'containerAppsSettings'
   params: {
+    appConfigLabel: appConfigLabel
     containerAppsList: [
       for i in range(0, length(containerAppsList)): {
         #disable-next-line BCP318
@@ -2859,7 +2863,7 @@ var _modelDeploymentNamesSettings = [
   for modelDeployment in modelDeploymentList: {
     name: modelDeployment.canonical_name
     value: modelDeployment.name
-    label: 'ai-lz'
+    label: appConfigLabel
     contentType: 'text/plain'
   }
 ]
@@ -2869,7 +2873,7 @@ var _databaseContainerNamesSettings = [
   for databaseContainer in databaseContainersList: {
     name: databaseContainer.canonical_name
     value: databaseContainer.name
-    label: 'ai-lz'
+    label: appConfigLabel
     contentType: 'text/plain'
   }
 ]
@@ -2879,7 +2883,7 @@ var _storageContainerNamesSettings = [
   for storageContainer in storageAccountContainersList: {
     name: storageContainer.canonical_name
     value: storageContainer.name
-    label: 'ai-lz'
+    label: appConfigLabel
     contentType: 'text/plain'
   }
 ]
@@ -2908,7 +2912,7 @@ module appConfigKeyVaultPopulate 'modules/app-configuration/app-configuration.bi
             name: '${app.canonical_name}_APIKEY'
             #disable-next-line BCP318
             value: '{"uri":"${keyVault.outputs.uri}secrets/${replace(app.canonical_name, '_', '-')}-APIKEY"}'
-            label: 'ai-lz'
+            label: appConfigLabel
             contentType: 'application/vnd.microsoft.appconfig.keyvaultref+json;charset=utf-8'
       }
     ]
@@ -2923,9 +2927,9 @@ module cosmosConfigKeyVaultPopulate 'modules/app-configuration/app-configuration
     keyValues: concat(
       [
         #disable-next-line BCP318
-      { name: 'COSMOS_DB_ACCOUNT_RESOURCE_ID', value: cosmosDBAccount.outputs.resourceId, label: 'ai-lz', contentType: 'text/plain' }
+      { name: 'COSMOS_DB_ACCOUNT_RESOURCE_ID', value: cosmosDBAccount.outputs.resourceId, label: appConfigLabel, contentType: 'text/plain' }
       #disable-next-line BCP318
-      { name: 'COSMOS_DB_ENDPOINT',              value: cosmosDBAccount.outputs.endpoint,            label: 'ai-lz', contentType: 'text/plain' }
+      { name: 'COSMOS_DB_ENDPOINT',              value: cosmosDBAccount.outputs.endpoint,            label: appConfigLabel, contentType: 'text/plain' }
       ]
     )
   }
@@ -2946,98 +2950,98 @@ module appConfigPopulate 'modules/app-configuration/app-configuration.bicep' = i
       _storageContainerNamesSettings,
       [
         // ── General / Deployment ─────────────────────────────────────────────
-      { name: 'AZURE_TENANT_ID',     value: tenant().tenantId,                      label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'SUBSCRIPTION_ID',     value: subscription().subscriptionId,          label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'AZURE_RESOURCE_GROUP', value: resourceGroup().name,                  label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'LOCATION',            value: location,                               label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'ENVIRONMENT_NAME',    value: environmentName,                        label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'DEPLOYMENT_NAME',     value: deployment().name,                      label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'RESOURCE_TOKEN',      value: resourceToken,                          label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'ENABLE_AGENTIC_RETRIEVAL', value: toLower(string(enableAgenticRetrieval)), label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'NETWORK_ISOLATION',   value: toLower(string(_networkIsolation)),     label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'USE_UAI',             value: string(_useUAI),                        label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'LOG_LEVEL',           value: 'INFO',                                 label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'ENABLE_CONSOLE_LOGGING', value: 'true',                              label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'PROMPT_SOURCE',       value: 'file',                                 label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'RELEASE',     value: _manifest.tag,                      label: 'ai-lz', contentType: 'text/plain' }
+      { name: 'AZURE_TENANT_ID',     value: tenant().tenantId,                      label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'SUBSCRIPTION_ID',     value: subscription().subscriptionId,          label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'AZURE_RESOURCE_GROUP', value: resourceGroup().name,                  label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'LOCATION',            value: location,                               label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'ENVIRONMENT_NAME',    value: environmentName,                        label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'DEPLOYMENT_NAME',     value: deployment().name,                      label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'RESOURCE_TOKEN',      value: resourceToken,                          label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'ENABLE_AGENTIC_RETRIEVAL', value: toLower(string(enableAgenticRetrieval)), label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'NETWORK_ISOLATION',   value: toLower(string(_networkIsolation)),     label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'USE_UAI',             value: string(_useUAI),                        label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'LOG_LEVEL',           value: 'INFO',                                 label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'ENABLE_CONSOLE_LOGGING', value: 'true',                              label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'PROMPT_SOURCE',       value: 'file',                                 label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'RELEASE',     value: _manifest.tag,                      label: appConfigLabel, contentType: 'text/plain' }
       #disable-next-line BCP318
-      { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsights.outputs.connectionString,   label: 'ai-lz', contentType: 'text/plain' }
+      { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsights.outputs.connectionString,   label: appConfigLabel, contentType: 'text/plain' }
       #disable-next-line BCP318
-      { name: 'APPLICATIONINSIGHTS__INSTRUMENTATIONKEY', value: appInsights.outputs.instrumentationKey, label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'AGENT_STRATEGY', value: 'single_agent_rag', label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'AGENT_ID', value: '', label: 'ai-lz', contentType: 'text/plain' }
+      { name: 'APPLICATIONINSIGHTS__INSTRUMENTATIONKEY', value: appInsights.outputs.instrumentationKey, label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'AGENT_STRATEGY', value: 'single_agent_rag', label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'AGENT_ID', value: '', label: appConfigLabel, contentType: 'text/plain' }
 
       //── Resource IDs ─────────────────────────────────────────────────────
       #disable-next-line BCP318
-      { name: 'KEY_VAULT_RESOURCE_ID', value: keyVault.outputs.resourceId, label: 'ai-lz', contentType: 'text/plain' }
+      { name: 'KEY_VAULT_RESOURCE_ID', value: keyVault.outputs.resourceId, label: appConfigLabel, contentType: 'text/plain' }
       #disable-next-line BCP318
-      { name: 'STORAGE_ACCOUNT_RESOURCE_ID', value: storageAccount.outputs.resourceId, label: 'ai-lz', contentType: 'text/plain' }
+      { name: 'STORAGE_ACCOUNT_RESOURCE_ID', value: storageAccount.outputs.resourceId, label: appConfigLabel, contentType: 'text/plain' }
       #disable-next-line BCP318
-      { name: 'APP_INSIGHTS_RESOURCE_ID', value: appInsights.outputs.resourceId, label: 'ai-lz', contentType: 'text/plain' }
+      { name: 'APP_INSIGHTS_RESOURCE_ID', value: appInsights.outputs.resourceId, label: appConfigLabel, contentType: 'text/plain' }
       #disable-next-line BCP318
-      { name: 'LOG_ANALYTICS_RESOURCE_ID', value: logAnalytics.outputs.resourceId, label: 'ai-lz', contentType: 'text/plain' }
+      { name: 'LOG_ANALYTICS_RESOURCE_ID', value: logAnalytics.outputs.resourceId, label: appConfigLabel, contentType: 'text/plain' }
       #disable-next-line BCP318
-      { name: 'CONTAINER_ENV_RESOURCE_ID', value: containerEnv.outputs.resourceId, label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'AI_FOUNDRY_ACCOUNT_RESOURCE_ID', value: (deployAiFoundry) ? aiFoundryAccountResourceId : '', label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'AI_FOUNDRY_PROJECT_RESOURCE_ID', value: (deployAiFoundry) ? aiFoundryProjectResourceId : '', label: 'ai-lz', contentType: 'text/plain' }
-      // { name: 'AI_FOUNDRY_PROJECT_WORKSPACE_ID', value: (deployAiFoundry) ? aiFoundryFormatProjectWorkspaceId!.outputs.projectWorkspaceIdGuid : '', label: 'ai-lz', contentType: 'text/plain' }
+      { name: 'CONTAINER_ENV_RESOURCE_ID', value: containerEnv.outputs.resourceId, label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'AI_FOUNDRY_ACCOUNT_RESOURCE_ID', value: (deployAiFoundry) ? aiFoundryAccountResourceId : '', label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'AI_FOUNDRY_PROJECT_RESOURCE_ID', value: (deployAiFoundry) ? aiFoundryProjectResourceId : '', label: appConfigLabel, contentType: 'text/plain' }
+      // { name: 'AI_FOUNDRY_PROJECT_WORKSPACE_ID', value: (deployAiFoundry) ? aiFoundryFormatProjectWorkspaceId!.outputs.projectWorkspaceIdGuid : '', label: appConfigLabel, contentType: 'text/plain' }
       #disable-next-line BCP318
-      { name: 'SEARCH_SERVICE_UAI_RESOURCE_ID', value: (_useUAI) ? searchServiceUAI.outputs.resourceId : '', label: 'ai-lz', contentType: 'text/plain' }
+      { name: 'SEARCH_SERVICE_UAI_RESOURCE_ID', value: (_useUAI) ? searchServiceUAI.outputs.resourceId : '', label: appConfigLabel, contentType: 'text/plain' }
       #disable-next-line BCP318
-      { name: 'SEARCH_SERVICE_RESOURCE_ID', value: searchService.outputs.resourceId, label: 'ai-lz', contentType: 'text/plain' }
+      { name: 'SEARCH_SERVICE_RESOURCE_ID', value: searchService.outputs.resourceId, label: appConfigLabel, contentType: 'text/plain' }
       
       // ── Resource Names ───────────────────────────────────────────────────
-      { name: 'AI_FOUNDRY_ACCOUNT_NAME', value: aiFoundryAccountName, label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'AI_FOUNDRY_PROJECT_NAME', value: aiFoundryProjectName, label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'AI_FOUNDRY_STORAGE_ACCOUNT_NAME', value: aiFoundryStorageAccountName, label: 'ai-lz', contentType: 'text/plain'}
-      { name: 'APP_CONFIG_NAME', value: appConfigName, label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'APP_INSIGHTS_NAME', value: appInsightsName, label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'CONTAINER_ENV_NAME', value: containerEnvName, label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'CONTAINER_REGISTRY_NAME', value: containerRegistryName, label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'CONTAINER_REGISTRY_LOGIN_SERVER', value: '${containerRegistryName}.azurecr.io', label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'DATABASE_ACCOUNT_NAME', value: dbAccountName, label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'DATABASE_NAME', value: dbDatabaseName, label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'SEARCH_SERVICE_NAME', value: searchServiceName, label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'STORAGE_ACCOUNT_NAME', value: storageAccountName, label: 'ai-lz', contentType: 'text/plain' }
+      { name: 'AI_FOUNDRY_ACCOUNT_NAME', value: aiFoundryAccountName, label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'AI_FOUNDRY_PROJECT_NAME', value: aiFoundryProjectName, label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'AI_FOUNDRY_STORAGE_ACCOUNT_NAME', value: aiFoundryStorageAccountName, label: appConfigLabel, contentType: 'text/plain'}
+      { name: 'APP_CONFIG_NAME', value: appConfigName, label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'APP_INSIGHTS_NAME', value: appInsightsName, label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'CONTAINER_ENV_NAME', value: containerEnvName, label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'CONTAINER_REGISTRY_NAME', value: containerRegistryName, label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'CONTAINER_REGISTRY_LOGIN_SERVER', value: '${containerRegistryName}.azurecr.io', label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'DATABASE_ACCOUNT_NAME', value: dbAccountName, label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'DATABASE_NAME', value: dbDatabaseName, label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'SEARCH_SERVICE_NAME', value: searchServiceName, label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'STORAGE_ACCOUNT_NAME', value: storageAccountName, label: appConfigLabel, contentType: 'text/plain' }
 
       // ── Feature flagging ─────────────────────────────────────────────────
-      { name: 'DEPLOY_APP_CONFIG', value: string(deployAppConfig), label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'DEPLOY_KEY_VAULT', value: string(deployKeyVault), label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'DEPLOY_LOG_ANALYTICS', value: string(deployLogAnalytics), label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'DEPLOY_APP_INSIGHTS', value: string(deployAppInsights), label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'DEPLOY_SEARCH_SERVICE', value: string(deploySearchService), label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'DEPLOY_STORAGE_ACCOUNT', value: string(deployStorageAccount), label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'DEPLOY_COSMOS_DB', value: string(deployCosmosDb), label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'DEPLOY_CONTAINER_APPS', value: string(deployContainerApps), label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'DEPLOY_CONTAINER_REGISTRY', value: string(deployContainerRegistry), label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'DEPLOY_CONTAINER_ENV', value: string(deployContainerEnv), label: 'ai-lz', contentType: 'text/plain' }
+      { name: 'DEPLOY_APP_CONFIG', value: string(deployAppConfig), label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'DEPLOY_KEY_VAULT', value: string(deployKeyVault), label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'DEPLOY_LOG_ANALYTICS', value: string(deployLogAnalytics), label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'DEPLOY_APP_INSIGHTS', value: string(deployAppInsights), label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'DEPLOY_SEARCH_SERVICE', value: string(deploySearchService), label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'DEPLOY_STORAGE_ACCOUNT', value: string(deployStorageAccount), label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'DEPLOY_COSMOS_DB', value: string(deployCosmosDb), label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'DEPLOY_CONTAINER_APPS', value: string(deployContainerApps), label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'DEPLOY_CONTAINER_REGISTRY', value: string(deployContainerRegistry), label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'DEPLOY_CONTAINER_ENV', value: string(deployContainerEnv), label: appConfigLabel, contentType: 'text/plain' }
 
       // ── Endpoints / URIs ──────────────────────────────────────────────────
       #disable-next-line BCP318
-      { name: 'KEY_VAULT_URI',                   value: keyVault.outputs.uri,                        label: 'ai-lz', contentType: 'text/plain' }
+      { name: 'KEY_VAULT_URI',                   value: keyVault.outputs.uri,                        label: appConfigLabel, contentType: 'text/plain' }
       #disable-next-line BCP318
-      { name: 'STORAGE_BLOB_ENDPOINT',           value: storageAccount.outputs.primaryBlobEndpoint,  label: 'ai-lz', contentType: 'text/plain' }
-      { name: 'AI_FOUNDRY_ACCOUNT_ENDPOINT',     value: (deployAiFoundry) ? aiFoundryAccountEndpoint : '', label: 'ai-lz', contentType: 'text/plain' }      
-      { name: 'AI_FOUNDRY_PROJECT_ENDPOINT',     value: (deployAiFoundry) ? aiFoundryProjectEndpoint : '', label: 'ai-lz', contentType: 'text/plain' }
+      { name: 'STORAGE_BLOB_ENDPOINT',           value: storageAccount.outputs.primaryBlobEndpoint,  label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'AI_FOUNDRY_ACCOUNT_ENDPOINT',     value: (deployAiFoundry) ? aiFoundryAccountEndpoint : '', label: appConfigLabel, contentType: 'text/plain' }      
+      { name: 'AI_FOUNDRY_PROJECT_ENDPOINT',     value: (deployAiFoundry) ? aiFoundryProjectEndpoint : '', label: appConfigLabel, contentType: 'text/plain' }
       #disable-next-line BCP318
-      { name: 'SEARCH_SERVICE_QUERY_ENDPOINT',   value: searchService.outputs.endpoint,              label: 'ai-lz', contentType: 'text/plain' }
+      { name: 'SEARCH_SERVICE_QUERY_ENDPOINT',   value: searchService.outputs.endpoint,              label: appConfigLabel, contentType: 'text/plain' }
 
       // ── Connections ───────────────────────────────────────────────────────
       #disable-next-line BCP318
-      { name: 'SEARCH_CONNECTION_ID', value: deploySearchService && deployAiFoundry ? aiFoundryConnectionSearch.outputs.searchConnectionId : '', label: 'ai-lz', contentType: 'text/plain' }
+      { name: 'SEARCH_CONNECTION_ID', value: deploySearchService && deployAiFoundry ? aiFoundryConnectionSearch.outputs.searchConnectionId : '', label: appConfigLabel, contentType: 'text/plain' }
       #disable-next-line BCP318
-      { name: 'BING_CONNECTION_ID', value: deployGroundingWithBing && deployAiFoundry ? bingSearchConnection!.outputs.bingConnectionId : '', label: 'ai-lz', contentType: 'text/plain' }
+      { name: 'BING_CONNECTION_ID', value: deployGroundingWithBing && deployAiFoundry ? bingSearchConnection!.outputs.bingConnectionId : '', label: appConfigLabel, contentType: 'text/plain' }
 
       //── Managed Identity Principals ───────────────────────────────────────
       #disable-next-line BCP318
-      { name: 'CONTAINER_ENV_PRINCIPAL_ID', value: (_useUAI) ? containerEnvUAI.outputs.principalId : containerEnv.outputs.systemAssignedMIPrincipalId!, label: 'ai-lz', contentType: 'text/plain' }
+      { name: 'CONTAINER_ENV_PRINCIPAL_ID', value: (_useUAI) ? containerEnvUAI.outputs.principalId : containerEnv.outputs.systemAssignedMIPrincipalId!, label: appConfigLabel, contentType: 'text/plain' }
       #disable-next-line BCP318
-      { name: 'SEARCH_SERVICE_PRINCIPAL_ID', value: (_useUAI) ? searchServiceUAI.outputs.principalId : searchService.outputs.systemAssignedMIPrincipalId!, label: 'ai-lz', contentType: 'text/plain' }
+      { name: 'SEARCH_SERVICE_PRINCIPAL_ID', value: (_useUAI) ? searchServiceUAI.outputs.principalId : searchService.outputs.systemAssignedMIPrincipalId!, label: appConfigLabel, contentType: 'text/plain' }
 
       // ── Container Apps List & Model Deployments ────────────────────────────
       #disable-next-line BCP318
-      { name: 'CONTAINER_APPS', value: string(containerAppsSettings.outputs.containerAppsList), label: 'ai-lz', contentType: 'application/json' }
-      { name: 'MODEL_DEPLOYMENTS', value: string(_modelDeploymentSettings), label: 'ai-lz', contentType: 'application/json' }
+      { name: 'CONTAINER_APPS', value: string(containerAppsSettings.outputs.containerAppsList), label: appConfigLabel, contentType: 'application/json' }
+      { name: 'MODEL_DEPLOYMENTS', value: string(_modelDeploymentSettings), label: appConfigLabel, contentType: 'application/json' }
 
     ]
     )
