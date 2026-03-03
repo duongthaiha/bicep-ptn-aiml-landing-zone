@@ -1498,13 +1498,13 @@ module aiFoundry 'modules/ai-foundry/main.bicep' = if (deployAiFoundry) {
           {
             model: {
               format: 'OpenAI'
-              name: 'gpt-5-mini'
-              version: '2025-08-07'
+              name: 'gpt-4.1-mini'
+              version: '2025-04-14'
             }
-            name: 'gpt-5-mini'
+            name: 'gpt-4.1-mini'
             sku: {
               name: 'GlobalStandard'
-              capacity: 10
+              capacity: 40
             }
           }
           {
@@ -1516,7 +1516,7 @@ module aiFoundry 'modules/ai-foundry/main.bicep' = if (deployAiFoundry) {
             name: 'text-embedding-3-large'
             sku: {
               name: 'Standard'
-              capacity: 1
+              capacity: 40
             }
           }
         ]
