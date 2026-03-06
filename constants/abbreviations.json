@@ -129,7 +129,6 @@
     "managedGrafana": "amg-"
   },
   "integration": {
-    "apiManagementService": "apim-",
     "integrationAccount": "ia-",
     "logicApp": "logic-",
     "serviceBusNamespace": "sbns-",

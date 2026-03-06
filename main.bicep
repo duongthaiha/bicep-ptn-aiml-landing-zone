@@ -94,7 +94,6 @@ param azureBastionSubnetName string = 'AzureBastionSubnet'
 param azureFirewallSubnetName string = 'AzureFirewallSubnet'
 param azureAppGatewaySubnetName string = 'AppGatewaySubnet'
 param jumpboxSubnetName string = 'jumpbox-subnet'
-param apiManagementSubnetName string = 'api-management-subnet'
 param acaEnvironmentSubnetName string = 'aca-environment-subnet'
 param devopsBuildAgentsSubnetName string = 'devops-build-agents-subnet'
 
@@ -128,9 +127,6 @@ param gatewaySubnetPrefix string = '192.168.2.192/26' // 192.168.2.192–192.168
 
 @description('Application Gateway subnet — /27 (32 IPs)')
 param azureAppGatewaySubnetPrefix string = '192.168.3.0/27' // 192.168.3.0–192.168.3.31
-
-@description('API Management subnet — /27 (32 IPs)')
-param apimSubnetPrefix string = '192.168.3.32/27' // 192.168.3.32–192.168.3.63
 
 @description('Jumpbox subnet — /27 (32 IPs)')
 param jumpboxSubnetPrefix string = '192.168.3.64/27' // 192.168.3.64–192.168.3.95
@@ -201,9 +197,6 @@ param sideBySideDeploy bool = true
 
 @description('Deploy Virtual Machine software.')
 param deploySoftware bool = true
-
-@description('Deploy API Management service.')
-param deployApim bool = false
 
 @description('Deploy AI Foundry Project.')
 param deployAfProject bool = true
@@ -525,17 +518,7 @@ var baseSubnets = [
       }
 ]
 
-
-// Conditional subnet for API Management
-var apimSubnet = deployApim ? [
-  {
-    name: apiManagementSubnetName
-    addressPrefix: apimSubnetPrefix 
-  }
-] : []
-
-// Combine all subnets based on feature flags
-var subnets = concat(baseSubnets, apimSubnet)
+var subnets = baseSubnets
 
 module virtualNetworkSubnets 'modules/networking/subnets.bicep' = if (_networkIsolation && useExistingVNet && deploySubnets) {
   name: 'virtualNetworkSubnetsDeployment'
@@ -1651,7 +1634,7 @@ module aiFoundryConnectionSearch 'modules/ai-foundry/connection-ai-search.bicep'
 }
 
 // Application Insights Connection
-module aiFoundryConnectionInsights 'modules/ai-foundry/connection-application-insights.bicep' = if (deployAiFoundry && deployAppInsights) {
+module aiFoundryConnectionInsights 'modules/ai-foundry/connection-application-insights.bicep' = if (deployAiFoundry && deployAppInsights && deployLogAnalytics) {
   name: 'connection-appinsights-${resourceToken}'
   params: {
     aiFoundryName: aiFoundry!.outputs.aiServicesName
@@ -1680,7 +1663,7 @@ module aiFoundryConnectionStorage 'modules/ai-foundry/connection-storage-account
 //////////////////////////////////////////////////////////////////////////
 var appInsightsInvalidLocations = ['westcentralus']
 
-module appInsights 'br/public:avm/res/insights/component:0.6.0' = if (deployAppInsights) {
+module appInsights 'br/public:avm/res/insights/component:0.6.0' = if (deployAppInsights && deployLogAnalytics) {
   name: 'appInsights'
   params: {
     name: appInsightsName
@@ -1695,7 +1678,7 @@ module appInsights 'br/public:avm/res/insights/component:0.6.0' = if (deployAppI
 }
 
 //private link scope
-resource privateLinkScope 'microsoft.insights/privatelinkscopes@2021-07-01-preview' = if (_networkIsolation && deployAppInsights) {
+resource privateLinkScope 'microsoft.insights/privatelinkscopes@2021-07-01-preview' = if (_networkIsolation && deployAppInsights && deployLogAnalytics) {
   name: '${const.abbrs.networking.privateLinkScope}${resourceToken}'
   location: 'global'
   properties :{
@@ -1757,7 +1740,7 @@ module privateDnsZoneAzureAutomation 'modules/networking/private-dns.bicep' = if
   }
 }
 
-module privateEndpointPrivateLinkScope 'modules/networking/private-endpoint.bicep' = if (_networkIsolation) {
+module privateEndpointPrivateLinkScope 'modules/networking/private-endpoint.bicep' = if (_networkIsolation && deployAppInsights && deployLogAnalytics) {
   name: 'privatelink-scope-private-endpoint'
   params: {
     name: '${const.abbrs.networking.privateEndpoint}${const.abbrs.networking.privateLinkScope}${resourceToken}'
@@ -1806,7 +1789,7 @@ module privateEndpointPrivateLinkScope 'modules/networking/private-endpoint.bice
   ]
 }
 
-resource privateLinkScopedResources1 'microsoft.insights/privatelinkscopes/scopedresources@2021-07-01-preview' = if (_networkIsolation && deployAppInsights) {
+resource privateLinkScopedResources1 'microsoft.insights/privatelinkscopes/scopedresources@2021-07-01-preview' = if (_networkIsolation && deployAppInsights && deployLogAnalytics) {
   name: '${const.abbrs.networking.privateLinkScope}${resourceToken}/${logAnalyticsWorkspaceName}'!
   properties :{
     #disable-next-line BCP318
@@ -1817,7 +1800,7 @@ resource privateLinkScopedResources1 'microsoft.insights/privatelinkscopes/scope
   ]
 }
 
-resource privateLinkScopedResources2 'microsoft.insights/privatelinkscopes/scopedresources@2021-07-01-preview' = if (_networkIsolation && deployAppInsights) {
+resource privateLinkScopedResources2 'microsoft.insights/privatelinkscopes/scopedresources@2021-07-01-preview' = if (_networkIsolation && deployAppInsights && deployLogAnalytics) {
   name: '${const.abbrs.networking.privateLinkScope}${resourceToken}/${appInsightsName}'!
   properties :{
     #disable-next-line BCP318
@@ -1859,7 +1842,7 @@ module containerEnv 'br/public:avm/res/app/managed-environment:0.11.3' = if (dep
       //}
     }
     #disable-next-line BCP318
-    appInsightsConnectionString: appInsights.outputs.connectionString
+    appInsightsConnectionString: (deployAppInsights && deployLogAnalytics) ? appInsights.outputs.connectionString : ''
     zoneRedundant: useZoneRedundancy
     workloadProfiles: workloadProfiles
     managedIdentities: {
@@ -1872,8 +1855,10 @@ module containerEnv 'br/public:avm/res/app/managed-environment:0.11.3' = if (dep
     publicNetworkAccess: networkIsolation ? 'Disabled' : 'Enabled'
   }
   dependsOn: [
-    appInsights!
-    logAnalytics!
+    #disable-next-line BCP321
+    (deployAppInsights && deployLogAnalytics) ? appInsights : null
+    #disable-next-line BCP321
+    deployLogAnalytics ? logAnalytics : null
     #disable-next-line BCP321
     !useExistingVNet ? virtualNetwork : null
     #disable-next-line BCP321
@@ -2215,10 +2200,6 @@ module storageAccount 'br/public:avm/res/storage/storage-account:0.26.2' = if (d
     }
   }
 }
-
-// API Management
-//////////////////////////////////////////////////////////////////////////
-// Coming Soon
 
 //////////////////////////////////////////////////////////////////////////
 // ROLE ASSIGNMENTS
@@ -2965,9 +2946,9 @@ module appConfigPopulate 'modules/app-configuration/app-configuration.bicep' = i
       { name: 'PROMPT_SOURCE',       value: 'file',                                 label: appConfigLabel, contentType: 'text/plain' }
       { name: 'RELEASE',     value: _manifest.tag,                      label: appConfigLabel, contentType: 'text/plain' }
       #disable-next-line BCP318
-      { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsights.outputs.connectionString,   label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: (deployAppInsights && deployLogAnalytics) ? appInsights.outputs.connectionString : '',   label: appConfigLabel, contentType: 'text/plain' }
       #disable-next-line BCP318
-      { name: 'APPLICATIONINSIGHTS__INSTRUMENTATIONKEY', value: appInsights.outputs.instrumentationKey, label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'APPLICATIONINSIGHTS__INSTRUMENTATIONKEY', value: (deployAppInsights && deployLogAnalytics) ? appInsights.outputs.instrumentationKey : '', label: appConfigLabel, contentType: 'text/plain' }
       { name: 'AGENT_STRATEGY', value: 'single_agent_rag', label: appConfigLabel, contentType: 'text/plain' }
       { name: 'AGENT_ID', value: '', label: appConfigLabel, contentType: 'text/plain' }
 
@@ -2977,9 +2958,9 @@ module appConfigPopulate 'modules/app-configuration/app-configuration.bicep' = i
       #disable-next-line BCP318
       { name: 'STORAGE_ACCOUNT_RESOURCE_ID', value: storageAccount.outputs.resourceId, label: appConfigLabel, contentType: 'text/plain' }
       #disable-next-line BCP318
-      { name: 'APP_INSIGHTS_RESOURCE_ID', value: appInsights.outputs.resourceId, label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'APP_INSIGHTS_RESOURCE_ID', value: (deployAppInsights && deployLogAnalytics) ? appInsights.outputs.resourceId : '', label: appConfigLabel, contentType: 'text/plain' }
       #disable-next-line BCP318
-      { name: 'LOG_ANALYTICS_RESOURCE_ID', value: logAnalytics.outputs.resourceId, label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'LOG_ANALYTICS_RESOURCE_ID', value: deployLogAnalytics ? logAnalytics.outputs.resourceId : '', label: appConfigLabel, contentType: 'text/plain' }
       #disable-next-line BCP318
       { name: 'CONTAINER_ENV_RESOURCE_ID', value: containerEnv.outputs.resourceId, label: appConfigLabel, contentType: 'text/plain' }
       { name: 'AI_FOUNDRY_ACCOUNT_RESOURCE_ID', value: (deployAiFoundry) ? aiFoundryAccountResourceId : '', label: appConfigLabel, contentType: 'text/plain' }

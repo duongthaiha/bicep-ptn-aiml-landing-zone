@@ -75,42 +75,6 @@
     "guid": "a7ffa36f-339b-4b5c-8bdf-e2c188b2c0eb",
     "key": "AksRBACWriter"
   },
-  "ApiManagementServiceContributor": {
-    "guid": "312a565d-c81f-4fd8-895a-4e21e48d571c",
-    "key": "ApiManagementServiceContributor"
-  },
-  "ApiManagementServiceOperatorRole": {
-    "guid": "e022efe7-f5ba-4159-bbe4-b44f577e9b61",
-    "key": "ApiManagementServiceOperatorRole"
-  },
-  "ApiManagementServiceReaderRole": {
-    "guid": "71522526-b88f-4d52-b57f-d31fc3546d0d",
-    "key": "ApiManagementServiceReaderRole"
-  },
-  "ApiManagementServiceWorkspaceApiDeveloper": {
-    "guid": "9565a273-41b9-4368-97d2-aeb0c976a9b3",
-    "key": "ApiManagementServiceWorkspaceApiDeveloper"
-  },
-  "ApiManagementServiceWorkspaceApiProductManager": {
-    "guid": "d59a3e9c-6d52-4a5a-aeed-6bf3cf0e31da",
-    "key": "ApiManagementServiceWorkspaceApiProductManager"
-  },
-  "ApiManagementWorkspaceApiDeveloper": {
-    "guid": "56328988-075d-4c6a-8766-d93edd6725b6",
-    "key": "ApiManagementWorkspaceApiDeveloper"
-  },
-  "ApiManagementWorkspaceApiProductManager": {
-    "guid": "73c2c328-d004-4c5e-938c-35c6f5679a1f",
-    "key": "ApiManagementWorkspaceApiProductManager"
-  },
-  "ApiManagementWorkspaceContributor": {
-    "guid": "0c34c906-8d99-4cb7-8bb7-33f5b0a1a799",
-    "key": "ApiManagementWorkspaceContributor"
-  },
-  "ApiManagementWorkspaceReader": {
-    "guid": "ef1c2c96-4a77-49e8-b9a4-6179fe1d2fd2",
-    "key": "ApiManagementWorkspaceReader"
-  },
   "AppComplianceAutomationAdministrator": {
     "guid": "0f37683f-2463-46b6-9ce7-9b788b988ba2",
     "key": "AppComplianceAutomationAdministrator"
