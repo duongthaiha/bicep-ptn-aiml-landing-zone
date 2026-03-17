@@ -165,7 +165,7 @@ param deployLogAnalytics bool = true
 @description('Deploy Azure Application Insights for application performance monitoring and diagnostics.')
 param deployAppInsights bool = true
 
-@description('Deploy an Azure Cognitive Search service for indexing and querying content.')
+@description('Deploy an Azure Cognitive Search service for indexing and querying content. When disabled, search-related connections are skipped and search app configuration values resolve to empty values.')
 param deploySearchService bool = true
 
 @description('Deploy an Azure Storage Account to hold blobs, queues, tables, and files.')
@@ -1815,7 +1815,7 @@ resource privateLinkScopedResources2 'microsoft.insights/privatelinkscopes/scope
 //////////////////////////////////////////////////////////////////////////
 
 //Container Apps Env User Managed Identity
-module containerEnvUAI 'br/public:avm/res/managed-identity/user-assigned-identity:0.4.1' = if (_useUAI) {
+module containerEnvUAI 'br/public:avm/res/managed-identity/user-assigned-identity:0.4.1' = if (_useUAI && deployContainerEnv) {
   name: '${const.abbrs.security.managedIdentity}${containerEnvName}'
   params: {
     // Required parameters
@@ -1867,7 +1867,7 @@ module containerEnv 'br/public:avm/res/app/managed-environment:0.11.3' = if (dep
 }
 
 //Container Registry User Managed Identity
-module containerRegistryUAI 'br/public:avm/res/managed-identity/user-assigned-identity:0.4.1' = if (_useUAI) {
+module containerRegistryUAI 'br/public:avm/res/managed-identity/user-assigned-identity:0.4.1' = if (_useUAI && deployContainerRegistry) {
   name: '${const.abbrs.security.managedIdentity}${containerRegistryName}'
   params: {
     // Required parameters
@@ -1899,7 +1899,7 @@ module containerRegistry 'br/public:avm/res/container-registry/registry:0.9.3' =
 
 //Container Apps User Managed Identity
 module containerAppsUAI 'br/public:avm/res/managed-identity/user-assigned-identity:0.4.1' = [
-  for app in containerAppsList: if (_useUAI) {
+  for app in containerAppsList: if (_useUAI && deployContainerApps) {
     name: '${const.abbrs.security.managedIdentity}${app.service_name}'
     params: {
       // Required parameters
@@ -2108,7 +2108,7 @@ module logAnalytics 'br/public:avm/res/operational-insights/workspace:0.12.0' = 
 //////////////////////////////////////////////////////////////////////////
 
 //Search Service User Managed Identity
-module searchServiceUAI 'br/public:avm/res/managed-identity/user-assigned-identity:0.4.1' = if (_useUAI) {
+module searchServiceUAI 'br/public:avm/res/managed-identity/user-assigned-identity:0.4.1' = if (_useUAI && deploySearchService) {
   name: '${const.abbrs.security.managedIdentity}${searchServiceName}'
   params: {
     // Required parameters
@@ -2265,7 +2265,7 @@ module assignKeyVaultContributorAndSecretsOfficerExecutor 'modules/security/reso
 
 // Key Vault Service - Key Vault Secrets User -> ContainerApp
 module assignKeyVaultSecretsUserAca 'modules/security/resource-role-assignment.bicep' = [
-  for (app, i) in containerAppsList: if (deployKeyVault && contains(app.roles, const.roles.KeyVaultSecretsUser.key)) {
+  for (app, i) in containerAppsList: if (deployContainerApps && deployKeyVault && contains(app.roles, const.roles.KeyVaultSecretsUser.key)) {
     name: 'assignKeyVaultSecretsUserAca-${app.service_name}'
     params: {
       name: 'assignKeyVaultSecretsUserAca-${app.service_name}'
@@ -2420,7 +2420,7 @@ module assignAIFoundryCogServUserExecutor 'modules/security/resource-role-assign
 
 // App Configuration Settings Service - App Configuration Data Reader -> ContainerApp
 module assignAppConfigAppConfigurationDataReaderContainerApps 'modules/security/resource-role-assignment.bicep' = [
-  for (app, i) in containerAppsList: if (deployAppConfig && contains(
+  for (app, i) in containerAppsList: if (deployContainerApps && deployAppConfig && contains(
     app.roles,
     const.roles.AppConfigurationDataReader.key
   )) {
@@ -2446,7 +2446,7 @@ module assignAppConfigAppConfigurationDataReaderContainerApps 'modules/security/
 
 // AI Foundry Account - Cognitive Services User -> ContainerApp
 module assignAiFoundryAccountCognitiveServicesUserContainerApps 'modules/security/resource-role-assignment.bicep' = [
-  for (app, i) in containerAppsList: if (deployAiFoundry && contains(
+  for (app, i) in containerAppsList: if (deployContainerApps && deployAiFoundry && contains(
     app.roles,
     const.roles.CognitiveServicesUser.key
   )) {
@@ -2471,7 +2471,7 @@ module assignAiFoundryAccountCognitiveServicesUserContainerApps 'modules/securit
 
 // AI Foundry Account - Cognitive Services OpenAI User -> ContainerApp
 module assignAIFoundryCogServOAIUserContainerApps 'modules/security/resource-role-assignment.bicep' = [
-  for (app, i) in containerAppsList: if (deployAiFoundry && contains(
+  for (app, i) in containerAppsList: if (deployContainerApps && deployAiFoundry && contains(
     app.roles,
     const.roles.CognitiveServicesOpenAIUser.key
   )) {
@@ -2516,7 +2516,7 @@ module assignAiFoundryAccountCognitiveServicesUserSearch 'modules/security/resou
 
 // Azure Container Registry Service - AcrPull -> ContainerApp
 module assignCrAcrPullContainerApps 'modules/security/resource-role-assignment.bicep' = [
-  for (app, i) in containerAppsList: if (deployContainerRegistry && contains(app.roles, const.roles.AcrPull.key)) {
+  for (app, i) in containerAppsList: if (deployContainerApps && deployContainerRegistry && contains(app.roles, const.roles.AcrPull.key)) {
     name: 'assignCrAcrPull-${app.service_name}'
     params: {
       name: 'assignCrAcrPull-${app.service_name}'
@@ -2536,7 +2536,7 @@ module assignCrAcrPullContainerApps 'modules/security/resource-role-assignment.b
 
 // Cosmos DB Account - Cosmos DB Built-in Data Contributor -> ContainerApp
 module assignCosmosDBCosmosDbBuiltInDataContributorContainerApps 'modules/security/cosmos-data-plane-role-assignment.bicep' = [
-  for (app, i) in containerAppsList: if (deployCosmosDb && contains(
+  for (app, i) in containerAppsList: if (deployContainerApps && deployCosmosDb && contains(
     app.roles,
     const.roles.CosmosDBBuiltInDataContributor.key
   )) {
@@ -2554,7 +2554,7 @@ module assignCosmosDBCosmosDbBuiltInDataContributorContainerApps 'modules/securi
 
 // Key Vault Service - Key Vault Secrets User -> ContainerApp
 module assignKeyVaultKeyVaultSecretsUserContainerApps 'modules/security/resource-role-assignment.bicep' = [
-  for (app, i) in containerAppsList: if (deployKeyVault && contains(app.roles, const.roles.KeyVaultSecretsUser.key)) {
+  for (app, i) in containerAppsList: if (deployContainerApps && deployKeyVault && contains(app.roles, const.roles.KeyVaultSecretsUser.key)) {
     name: 'assignKeyVaultKeyVaultSecretsUser-${app.service_name}'
     params: {
       name: 'assignKeyVaultKeyVaultSecretsUser-${app.service_name}'
@@ -2577,7 +2577,7 @@ module assignKeyVaultKeyVaultSecretsUserContainerApps 'modules/security/resource
 
 // Search Service - Search Index Data Reader -> ContainerApp
 module assignSearchSearchIndexDataReaderContainerApps 'modules/security/resource-role-assignment.bicep' = [
-  for (app, i) in containerAppsList: if (deploySearchService && contains(
+  for (app, i) in containerAppsList: if (deployContainerApps && deploySearchService && contains(
     app.roles,
     const.roles.SearchIndexDataReader.key
   )) {
@@ -2603,7 +2603,7 @@ module assignSearchSearchIndexDataReaderContainerApps 'modules/security/resource
 
 // Search Service - Search Index Data Contributor -> ContainerApp
 module assignSearchSearchIndexDataContributorContainerApps 'modules/security/resource-role-assignment.bicep' = [
-  for (app, i) in containerAppsList: if (deploySearchService && contains(
+  for (app, i) in containerAppsList: if (deployContainerApps && deploySearchService && contains(
     app.roles,
     const.roles.SearchIndexDataContributor.key
   )) {
@@ -2629,7 +2629,7 @@ module assignSearchSearchIndexDataContributorContainerApps 'modules/security/res
 
 // Storage Account - Storage Blob Data Contributor -> ContainerApp
 module assignStorageStorageBlobDataContributorAca 'modules/security/resource-role-assignment.bicep' = [
-  for (app, i) in containerAppsList: if (deployStorageAccount && contains(
+  for (app, i) in containerAppsList: if (deployContainerApps && deployStorageAccount && contains(
     app.roles,
     const.roles.StorageBlobDataContributor.key
   )) {
@@ -2655,7 +2655,7 @@ module assignStorageStorageBlobDataContributorAca 'modules/security/resource-rol
 
 // Storage Account - Storage Blob Data Reader -> ContainerApp
 module assignStorageStorageBlobDataReaderAca 'modules/security/resource-role-assignment.bicep' = [
-  for (app, i) in containerAppsList: if (deployStorageAccount && contains(
+  for (app, i) in containerAppsList: if (deployContainerApps && deployStorageAccount && contains(
     app.roles,
     const.roles.StorageBlobDataReader.key
   )) {
@@ -2681,7 +2681,7 @@ module assignStorageStorageBlobDataReaderAca 'modules/security/resource-role-ass
 
 // Storage Account - Storage Blob Data Delegator -> ContainerApp
 module assignStorageStorageBlobDataDelegatorAca 'modules/security/resource-role-assignment.bicep' = [
-  for (app, i) in containerAppsList: if (deployStorageAccount && contains(
+  for (app, i) in containerAppsList: if (deployContainerApps && deployStorageAccount && contains(
     app.roles,
     const.roles.StorageBlobDelegator.key
   )) {
@@ -2923,9 +2923,9 @@ module appConfigPopulate 'modules/app-configuration/app-configuration.bicep' = i
     storeName: appConfig.outputs.name
     keyValues: concat(
       #disable-next-line BCP318
-      containerAppsSettings.outputs.containerAppsEndpoints,
+      deployContainerApps ? containerAppsSettings.outputs.containerAppsEndpoints : [],
       #disable-next-line BCP318
-      containerAppsSettings.outputs.containerAppsName,
+      deployContainerApps ? containerAppsSettings.outputs.containerAppsName : [],
       _modelDeploymentNamesSettings,
       _databaseContainerNamesSettings,
       _storageContainerNamesSettings,
@@ -2954,22 +2954,22 @@ module appConfigPopulate 'modules/app-configuration/app-configuration.bicep' = i
 
       //── Resource IDs ─────────────────────────────────────────────────────
       #disable-next-line BCP318
-      { name: 'KEY_VAULT_RESOURCE_ID', value: keyVault.outputs.resourceId, label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'KEY_VAULT_RESOURCE_ID', value: deployKeyVault ? keyVault.outputs.resourceId : '', label: appConfigLabel, contentType: 'text/plain' }
       #disable-next-line BCP318
-      { name: 'STORAGE_ACCOUNT_RESOURCE_ID', value: storageAccount.outputs.resourceId, label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'STORAGE_ACCOUNT_RESOURCE_ID', value: deployStorageAccount ? storageAccount.outputs.resourceId : '', label: appConfigLabel, contentType: 'text/plain' }
       #disable-next-line BCP318
       { name: 'APP_INSIGHTS_RESOURCE_ID', value: (deployAppInsights && deployLogAnalytics) ? appInsights.outputs.resourceId : '', label: appConfigLabel, contentType: 'text/plain' }
       #disable-next-line BCP318
       { name: 'LOG_ANALYTICS_RESOURCE_ID', value: deployLogAnalytics ? logAnalytics.outputs.resourceId : '', label: appConfigLabel, contentType: 'text/plain' }
       #disable-next-line BCP318
-      { name: 'CONTAINER_ENV_RESOURCE_ID', value: containerEnv.outputs.resourceId, label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'CONTAINER_ENV_RESOURCE_ID', value: deployContainerEnv ? containerEnv.outputs.resourceId : '', label: appConfigLabel, contentType: 'text/plain' }
       { name: 'AI_FOUNDRY_ACCOUNT_RESOURCE_ID', value: (deployAiFoundry) ? aiFoundryAccountResourceId : '', label: appConfigLabel, contentType: 'text/plain' }
       { name: 'AI_FOUNDRY_PROJECT_RESOURCE_ID', value: (deployAiFoundry) ? aiFoundryProjectResourceId : '', label: appConfigLabel, contentType: 'text/plain' }
       // { name: 'AI_FOUNDRY_PROJECT_WORKSPACE_ID', value: (deployAiFoundry) ? aiFoundryFormatProjectWorkspaceId!.outputs.projectWorkspaceIdGuid : '', label: appConfigLabel, contentType: 'text/plain' }
       #disable-next-line BCP318
-      { name: 'SEARCH_SERVICE_UAI_RESOURCE_ID', value: (_useUAI) ? searchServiceUAI.outputs.resourceId : '', label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'SEARCH_SERVICE_UAI_RESOURCE_ID', value: (deploySearchService && _useUAI) ? searchServiceUAI.outputs.resourceId : '', label: appConfigLabel, contentType: 'text/plain' }
       #disable-next-line BCP318
-      { name: 'SEARCH_SERVICE_RESOURCE_ID', value: searchService.outputs.resourceId, label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'SEARCH_SERVICE_RESOURCE_ID', value: deploySearchService ? searchService.outputs.resourceId : '', label: appConfigLabel, contentType: 'text/plain' }
       
       // ── Resource Names ───────────────────────────────────────────────────
       { name: 'AI_FOUNDRY_ACCOUNT_NAME', value: aiFoundryAccountName, label: appConfigLabel, contentType: 'text/plain' }
@@ -2999,13 +2999,13 @@ module appConfigPopulate 'modules/app-configuration/app-configuration.bicep' = i
 
       // ── Endpoints / URIs ──────────────────────────────────────────────────
       #disable-next-line BCP318
-      { name: 'KEY_VAULT_URI',                   value: keyVault.outputs.uri,                        label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'KEY_VAULT_URI',                   value: deployKeyVault ? keyVault.outputs.uri : '',                        label: appConfigLabel, contentType: 'text/plain' }
       #disable-next-line BCP318
-      { name: 'STORAGE_BLOB_ENDPOINT',           value: storageAccount.outputs.primaryBlobEndpoint,  label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'STORAGE_BLOB_ENDPOINT',           value: deployStorageAccount ? storageAccount.outputs.primaryBlobEndpoint : '',  label: appConfigLabel, contentType: 'text/plain' }
       { name: 'AI_FOUNDRY_ACCOUNT_ENDPOINT',     value: (deployAiFoundry) ? aiFoundryAccountEndpoint : '', label: appConfigLabel, contentType: 'text/plain' }      
       { name: 'AI_FOUNDRY_PROJECT_ENDPOINT',     value: (deployAiFoundry) ? aiFoundryProjectEndpoint : '', label: appConfigLabel, contentType: 'text/plain' }
       #disable-next-line BCP318
-      { name: 'SEARCH_SERVICE_QUERY_ENDPOINT',   value: searchService.outputs.endpoint,              label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'SEARCH_SERVICE_QUERY_ENDPOINT',   value: deploySearchService ? searchService.outputs.endpoint : '',              label: appConfigLabel, contentType: 'text/plain' }
 
       // ── Connections ───────────────────────────────────────────────────────
       #disable-next-line BCP318
@@ -3015,13 +3015,13 @@ module appConfigPopulate 'modules/app-configuration/app-configuration.bicep' = i
 
       //── Managed Identity Principals ───────────────────────────────────────
       #disable-next-line BCP318
-      { name: 'CONTAINER_ENV_PRINCIPAL_ID', value: (_useUAI) ? containerEnvUAI.outputs.principalId : containerEnv.outputs.systemAssignedMIPrincipalId!, label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'CONTAINER_ENV_PRINCIPAL_ID', value: deployContainerEnv ? ((_useUAI) ? containerEnvUAI.outputs.principalId : containerEnv.outputs.systemAssignedMIPrincipalId!) : '', label: appConfigLabel, contentType: 'text/plain' }
       #disable-next-line BCP318
-      { name: 'SEARCH_SERVICE_PRINCIPAL_ID', value: (_useUAI) ? searchServiceUAI.outputs.principalId : searchService.outputs.systemAssignedMIPrincipalId!, label: appConfigLabel, contentType: 'text/plain' }
+      { name: 'SEARCH_SERVICE_PRINCIPAL_ID', value: deploySearchService ? ((_useUAI) ? searchServiceUAI.outputs.principalId : searchService.outputs.systemAssignedMIPrincipalId!) : '', label: appConfigLabel, contentType: 'text/plain' }
 
       // ── Container Apps List & Model Deployments ────────────────────────────
       #disable-next-line BCP318
-      { name: 'CONTAINER_APPS', value: string(containerAppsSettings.outputs.containerAppsList), label: appConfigLabel, contentType: 'application/json' }
+      { name: 'CONTAINER_APPS', value: deployContainerApps ? string(containerAppsSettings.outputs.containerAppsList) : '[]', label: appConfigLabel, contentType: 'application/json' }
       { name: 'MODEL_DEPLOYMENTS', value: string(_modelDeploymentSettings), label: appConfigLabel, contentType: 'application/json' }
 
     ]
