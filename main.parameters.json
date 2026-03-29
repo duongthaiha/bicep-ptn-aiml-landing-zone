@@ -135,7 +135,21 @@
       "value": [
         {
           "name": "conversations",
-          "canonical_name": "CONVERSATIONS_DATABASE_CONTAINER"
+          "canonical_name": "CONVERSATIONS_DATABASE_CONTAINER",
+          "partitionKey": "/principal_id",
+          "indexingPolicy": {
+            "compositeIndexes": [
+              [
+                { "path": "/isDeleted", "order": "Ascending" },
+                { "path": "/_ts", "order": "Descending" }
+              ],
+              [
+                { "path": "/isDeleted", "order": "Ascending" },
+                { "path": "/name", "order": "Ascending" },
+                { "path": "/_ts", "order": "Descending" }
+              ]
+            ]
+          }          
         }
       ]
     },

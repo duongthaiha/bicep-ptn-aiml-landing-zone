@@ -2039,9 +2039,10 @@ module cosmosDBAccount 'br/public:avm/res/document-db/database-account:0.15.1' =
         containers: [
           for container in databaseContainersList: {
             name: container.name
-            paths: ['/id']
+            paths: [container.partitionKey]
             defaultTtl: -1
             throughput: 400
+            indexingPolicy: container.?indexingPolicy
           }
         ]
       }
