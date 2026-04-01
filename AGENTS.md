@@ -174,7 +174,7 @@ Result:
 
 `manifest.json` in this repository currently contains:
 - landing zone release metadata (`tag`, `repo`)
-- `install_script` URL
+- `ailz_tag` — the landing zone release tag (used to construct the `install.ps1` URL and passed to the jumpbox script)
 - optional `components` array
 
 ### Why this matters in network-isolated deployments
@@ -191,7 +191,7 @@ This enables post-provision work from the jumpbox where public access is constra
 
 ### Consumer pattern for derived accelerators
 In a consumer repo, set `manifest.json` to:
-- point `install_script` to the desired landing zone tag URL
+- set `ailz_tag` to the desired landing zone release tag
 - define component repos/tags the jumpbox should clone
 - keep all tags pinned for reproducibility
 

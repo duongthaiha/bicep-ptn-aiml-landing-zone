@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.  
 This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.0.5] - 2026-04-01
+### Fixed
+- Fixed jumpbox Custom Script Extension using incorrect release tag. Replaced `install_script` URL field in `manifest.json` with `ailz_tag` field. The install script URL is now constructed from the tag in `main.bicep`, and the correct landing zone tag is passed to the `-release` parameter instead of the consumer repo tag.
+
+### Documentation
+- Updated `AGENTS.md` to reflect the `ailz_tag` field replacing `install_script`.
+
 ## [v1.0.4] - 2026-03-29
 ### Changed
 - Made Cosmos DB throughput fully optional at both database and container levels using nullable types and safe access operators.
