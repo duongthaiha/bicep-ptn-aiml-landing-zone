@@ -2102,6 +2102,7 @@ module logAnalytics 'br/public:avm/res/operational-insights/workspace:0.12.0' = 
     skuName: 'PerGB2018'
     dataRetention: 30
     tags: _tags
+    forceCmkForQuery: false
     managedIdentities: {
       systemAssigned: true
     }
