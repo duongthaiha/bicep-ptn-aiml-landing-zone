@@ -36,57 +36,72 @@ jobs:
           REGIONS: ${{ inputs.regions }}
           SUB: ${{ vars.AZURE_SUBSCRIPTION_ID }}
         run: |
-          set -uo pipefail
           IFS=',' read -ra LIST <<< "$REGIONS"
 
-          # Helper: check whether RP+resourceType is available in region (returns 0 if available)
-          rp_available() {
-            local rp=$1 type=$2 region=$3
-            az provider show -n "$rp" \
-              --query "resourceTypes[?resourceType=='$type'].locations | [0]" -o tsv 2>/dev/null \
-              | tr '[:upper:]' '[:lower:]' | tr -d ' ' | grep -q "$(echo $region | tr -d ' ' | tr '[:upper:]' '[:lower:]')"
+          # Pull global Search SKUs once; each SKU lists which locations it's offered in
+          SEARCH_JSON=$(az rest --method get \
+            --url "https://management.azure.com/subscriptions/$SUB/providers/Microsoft.Search/skus?api-version=2025-05-01" 2>/dev/null || echo '{"value":[]}')
+
+          search_skus_in() {
+            local region=$1
+            echo "$SEARCH_JSON" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+r = '$region'.lower()
+out = []
+for s in d.get('value', []):
+    locs = [l.lower().replace(' ', '') for l in s.get('locations', [])]
+    if r in locs:
+        out.append(s.get('sku', {}).get('name', '?'))
+print(','.join(out) if out else 'NONE')
+"
           }
 
-          # AI Search: list SKUs available in region
-          search_skus() {
+          quota_search() {
             local region=$1
             az rest --method get \
-              --url "https://management.azure.com/subscriptions/$SUB/providers/Microsoft.Search/locations/$region/skus?api-version=2023-11-01" \
-              --query "value[].sku.name" -o tsv 2>/dev/null | tr '\n' ',' | sed 's/,$//'
+              --url "https://management.azure.com/subscriptions/$SUB/providers/Microsoft.Search/locations/$region/usages?api-version=2024-03-01-preview" \
+              --query "value[?currentValue<limit].name.value" -o tsv 2>/dev/null | head -1 || echo "?"
           }
 
-          # Cognitive Services / AI Foundry: list deployable model SKUs (proxy for capacity)
-          cog_quotas() {
+          cog_kinds() {
             local region=$1
-            az cognitiveservices usage list -l "$region" --query "length(@)" -o tsv 2>/dev/null || echo 0
+            az cognitiveservices account list-skus -l "$region" --query "length(@)" -o tsv 2>/dev/null || echo 0
           }
 
-          # Cosmos DB capability
           cosmos_available() {
             local region=$1
             az cosmosdb locations show --location "$region" --query "name" -o tsv 2>/dev/null
           }
 
+          cae_available() {
+            local region=$1
+            az provider show -n "Microsoft.App" \
+              --query "resourceTypes[?resourceType=='managedEnvironments'].locations | [0]" -o tsv 2>/dev/null \
+              | tr -d ' ' | tr '[:upper:]' '[:lower:]' \
+              | grep -q "^$(echo $region | tr -d ' ' | tr '[:upper:]' '[:lower:]')$" && echo yes || echo no
+          }
+
           {
-            echo "## Region availability probe"
+            echo "## Region availability probe (subscription: $SUB)"
             echo ""
-            echo "| Region | AI Search SKUs | AI Foundry (CogSvc) | Cosmos DB | Container Apps Env |"
+            echo "| Region | AI Search SKUs | CogSvc/Foundry SKUs | Cosmos DB | Container Apps Env |"
             echo "|---|---|---|---|---|"
           } >> "$GITHUB_STEP_SUMMARY"
 
           for r in "${LIST[@]}"; do
             r=$(echo "$r" | xargs)
-            search=$(search_skus "$r")
-            [ -z "$search" ] && search="❌ none"
-            cog=$(cog_quotas "$r")
-            [ "$cog" = "0" ] && cog="❌" || cog="✅ ($cog quota items)"
-            cosmos=$(cosmos_available "$r")
-            [ -z "$cosmos" ] && cosmos="❌" || cosmos="✅"
-            cae="✅"
-            rp_available "Microsoft.App" "managedEnvironments" "$r" || cae="❌"
-            echo "| $r | $search | $cog | $cosmos | $cae |" >> "$GITHUB_STEP_SUMMARY"
-            echo "$r → search=$search cog=$cog cosmos=$cosmos cae=$cae"
+            srch=$(search_skus_in "$r")
+            [ "$srch" = "NONE" ] && srch_md="❌" || srch_md="✅ $srch"
+            cog=$(cog_kinds "$r")
+            [ "$cog" = "0" ] && cog_md="❌" || cog_md="✅ $cog"
+            cos=$(cosmos_available "$r")
+            [ -z "$cos" ] && cos_md="❌" || cos_md="✅"
+            cae=$(cae_available "$r")
+            [ "$cae" = "yes" ] && cae_md="✅" || cae_md="❌"
+            echo "| $r | $srch_md | $cog_md | $cos_md | $cae_md |" >> "$GITHUB_STEP_SUMMARY"
+            echo "$r → search=[$srch] cog=$cog cosmos=$cos cae=$cae"
           done
 
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "_Note: this probes SKU/quota availability metadata. Actual capacity (e.g. \`InsufficientResourcesAvailable\`) is real-time and may still vary at deploy time._" >> "$GITHUB_STEP_SUMMARY"
+          echo "_SKU/quota metadata only — actual capacity (\`InsufficientResourcesAvailable\`) varies in real time._" >> "$GITHUB_STEP_SUMMARY"
