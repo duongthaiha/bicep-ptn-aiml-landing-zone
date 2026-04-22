@@ -181,7 +181,53 @@ If your consumer repo follows the recommended pattern (`infra/` is this repo as 
 
 ---
 
-## 10. Future work
+## 11. Region selection for AI/ML workloads
+
+The landing zone deploys AI Search, Cognitive Services / AI Foundry, Cosmos DB and Container Apps Environments in a single region. Capacity for **AI Search Standard SKU** and the **broadest Foundry model catalog** is the binding constraint — pick the region for those services first and let the rest follow.
+
+### Recommended primary regions (Apr 2026 — verified against Microsoft Foundry catalog)
+
+| Region | Foundry models | AI Search | Notes |
+|---|---|---|---|
+| **Sweden Central** ⭐ | ~123 (largest in EU) | ✅ Standard + extra capacity | Best for EU data residency, broadest model selection |
+| **East US 2** ⭐ | ~120 | ✅ Standard + extra capacity | First-tier US region for new model rollouts |
+| **Central US** | ~102 | ✅ Standard | Strong fallback for North America |
+| **France Central** | ~99 | ✅ Standard | Good EU alternative to Sweden Central |
+| **West Europe** | ~95 | ✅ Standard | Established EU region |
+| **East US** | ~95 | ✅ Standard | Established US region; can be capacity-tight |
+| **UK South** | ~95 | ✅ Standard | UK data residency |
+| **West US 3** | (widely supported) | ✅ Standard | Good for west-coast latency |
+
+### Lessons from live testing of this CI/CD
+
+We hit `InsufficientResourcesAvailable` for AI Search Standard in **eastus2** (during a busy window). Re-running the same pipeline in another region succeeded for the rest of the stack. Treat region selection as a **per-deployment** decision, not a one-time choice — bake the region into an `azd env` per environment and have a documented fallback.
+
+**Operational tips:**
+
+1. Probe live SKU availability before committing to a region:
+   ```sh
+   az search service create --name probe-$RANDOM --resource-group $RG \
+     --location $LOC --sku Standard --partition-count 1 --replica-count 1 --no-wait
+   # If it accepts → capacity exists. Delete the probe immediately afterwards.
+   ```
+2. For Foundry model availability use the Azure CLI:
+   ```sh
+   az cognitiveservices model list -l swedencentral -o table
+   ```
+3. The `sandbox-region-check.yml` workflow in this repo hits the Azure REST API and prints a per-region matrix to the job summary — use it as a quick comparator across your subscription.
+4. **Avoid mixing regions** for tightly coupled services (Search ↔ Foundry ↔ Cosmos) unless you’ve measured the cross-region latency cost.
+
+### When `InsufficientResourcesAvailable` strikes
+
+This is **environmental**, not a code defect. Sequence of action:
+
+1. Re-run the workflow 15–30 minutes later (capacity often returns).
+2. If still failing, switch `AZURE_LOCATION` to the next region from the table above and re-run `sandbox-cleanup.yml` then re-provision.
+3. If a region is persistently constrained, request capacity via the Azure portal (Subscriptions → Quotas) or open a support case.
+
+---
+
+## 12. Future work
 - Implement self-hosted runner registration in `install.ps1` (gated by a new `deployGitHubRunner` parameter and a runner registration token from a managed identity-protected Key Vault secret).
 - Provide an ACA-jobs runner Bicep module as an opt-in extension.
 - Auto-create the Entra apps + federated credentials from a one-time GitHub Action (currently scripted via `bootstrap-github-oidc.sh`).
