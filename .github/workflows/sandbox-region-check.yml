@@ -44,17 +44,7 @@ jobs:
 
           search_skus_in() {
             local region=$1
-            echo "$SEARCH_JSON" | python3 -c "
-import json, sys
-d = json.load(sys.stdin)
-r = '$region'.lower()
-out = []
-for s in d.get('value', []):
-    locs = [l.lower().replace(' ', '') for l in s.get('locations', [])]
-    if r in locs:
-        out.append(s.get('sku', {}).get('name', '?'))
-print(','.join(out) if out else 'NONE')
-"
+            echo "$SEARCH_JSON" | python3 -c "import json,sys; d=json.load(sys.stdin); r='$region'.lower(); out=[s.get('sku',{}).get('name','?') for s in d.get('value',[]) if r in [l.lower().replace(' ','') for l in s.get('locations',[])]]; print(','.join(out) if out else 'NONE')"
           }
 
           quota_search() {
