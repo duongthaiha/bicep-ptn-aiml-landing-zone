@@ -1,0 +1,71 @@
+# =====================================================================
+# TEMPLATE — Landing Zone CD pipeline for CONSUMER repositories.
+#
+# This file is shipped as a template, NOT an active workflow. The shipped
+# trigger is `workflow_dispatch` only and gated by an input flag, so it
+# does nothing useful in the upstream landing-zone repo.
+#
+# To use in a CONSUMER repository (which mounts this repo as `infra/`):
+#   1. Copy this file to `.github/workflows/cd-landingzone.yml` in your repo.
+#   2. Replace `uses:` paths to point at the pinned tag of this repo, e.g.
+#        uses: Azure/bicep-ptn-aiml-landing-zone/.github/workflows/reusable-azd-deploy.yml@v1.0.9
+#   3. Configure GitHub Environments `dev`, `test`, `prod` with required reviewers
+#      and per-env variables (see docs/github-actions.md).
+#   4. Adjust path filters and azd env names to your project.
+# =====================================================================
+
+name: CD Landing Zone (template)
+
+on:
+  workflow_dispatch:
+    inputs:
+      proceed:
+        description: Set to `yes` to actually run. Template is inert by default.
+        type: string
+        default: 'no'
+  # Uncomment in your consumer repo to enable automatic dev deploys:
+  # push:
+  #   branches: [main]
+  #   paths:
+  #     - 'infra/**'
+  #     - 'main.parameters.json'
+  #     - '.github/workflows/cd-landingzone.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          if [ "${{ inputs.proceed }}" != "yes" ]; then
+            echo "Template workflow. Set proceed=yes only when you know what you are doing."
+            exit 0
+          fi
+
+  dev:
+    needs: guard
+    if: ${{ inputs.proceed == 'yes' }}
+    uses: ./.github/workflows/reusable-azd-deploy.yml
+    with:
+      environment: dev
+      azdEnvName: ailz-dev
+      location: eastus2
+
+  test:
+    needs: dev
+    uses: ./.github/workflows/reusable-azd-deploy.yml
+    with:
+      environment: test
+      azdEnvName: ailz-test
+      location: eastus2
+
+  prod:
+    needs: test
+    uses: ./.github/workflows/reusable-azd-deploy.yml
+    with:
+      environment: prod
+      azdEnvName: ailz-prod
+      location: eastus2

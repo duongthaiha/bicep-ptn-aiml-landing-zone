@@ -1,0 +1,36 @@
+# PSRule for Azure configuration.
+# Docs: https://azure.github.io/PSRule.Rules.Azure/
+#
+# Strategy:
+#   - Run the Azure.Default baseline (well-architected, broadly applicable).
+#   - Curated suppressions for landing-zone-intentional trade-offs live in
+#     .ps-rule/Suppression.Rule.yaml so individual exceptions are auditable.
+#   - Findings outside the suppression list block the build.
+
+include:
+  module:
+    - PSRule.Rules.Azure
+
+input:
+  pathIgnore:
+    - '**/*.md'
+    - 'media/**'
+    - 'docs/**'
+    - '.github/**'
+    - '.ps-rule/**'
+    - 'install.ps1'
+  fileObjects: false
+
+execution:
+  unprocessedObject: Ignore
+  notProcessedWarning: false
+
+binding:
+  preferTargetInfo: true
+  targetType:
+    - resourceType
+    - type
+
+output:
+  culture:
+    - en-US

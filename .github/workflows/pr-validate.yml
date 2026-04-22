@@ -1,0 +1,102 @@
+name: PR Validate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'main.bicep'
+      - 'modules/**'
+      - 'constants/**'
+      - 'main.parameters.json'
+      - 'manifest.json'
+      - '.github/workflows/**'
+      - '.ps-rule/**'
+      - '.github/ps-rule.yaml'
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+concurrency:
+  group: pr-validate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  static:
+    # Always-on static validation. Safe for fork PRs (no Azure credentials used).
+    name: Static
+    uses: ./.github/workflows/reusable-bicep-validate.yml
+    with:
+      runPreview: false
+
+  preview:
+    # azd provision --preview against a sandbox RG.
+    # Skipped for fork PRs because OIDC tokens are not issued to fork workflows.
+    name: azd preview (sandbox)
+    needs: static
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    environment: pr-sandbox
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login (OIDC, validation-only identity)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Bicep
+        run: |
+          curl -sSL https://github.com/Azure/bicep/releases/latest/download/bicep-linux-x64 -o /usr/local/bin/bicep
+          chmod +x /usr/local/bin/bicep
+
+      - name: Install azd
+        uses: Azure/setup-azd@v2.1.0
+
+      - name: Render parameters and run what-if
+        shell: bash
+        env:
+          AZURE_ENV_NAME: pr-${{ github.event.pull_request.number }}
+          AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          AZURE_PRINCIPAL_ID: ${{ vars.AZURE_PRINCIPAL_ID }}
+        run: |
+          set -euo pipefail
+          azd env new "$AZURE_ENV_NAME" --location "$AZURE_LOCATION" --subscription "$AZURE_SUBSCRIPTION_ID" --no-prompt || azd env select "$AZURE_ENV_NAME"
+          # Forward sandbox-relevant vars
+          while IFS= read -r kv; do
+            k="${kv%%=*}"; v="${kv#*=}"
+            [ -z "$v" ] && continue
+            azd env set "$k" "$v" -e "$AZURE_ENV_NAME"
+          done <<EOF
+          AZURE_LOCATION=$AZURE_LOCATION
+          AZURE_PRINCIPAL_ID=$AZURE_PRINCIPAL_ID
+          NETWORK_ISOLATION=${{ vars.NETWORK_ISOLATION || 'false' }}
+          USE_UAI=${{ vars.USE_UAI || 'false' }}
+          USE_CAPP_API_KEY=${{ vars.USE_CAPP_API_KEY || 'false' }}
+          ENABLE_AGENTIC_RETRIEVAL=${{ vars.ENABLE_AGENTIC_RETRIEVAL || 'false' }}
+          DEPLOY_VM_KEY_VAULT=${{ vars.DEPLOY_VM_KEY_VAULT || 'false' }}
+          USE_EXISTING_VNET=${{ vars.USE_EXISTING_VNET || 'false' }}
+          DEPLOY_SUBNETS=${{ vars.DEPLOY_SUBNETS || 'false' }}
+          SIDE_BY_SIDE=${{ vars.SIDE_BY_SIDE || 'false' }}
+          EXISTING_VNET_RESOURCE_ID=${{ vars.EXISTING_VNET_RESOURCE_ID || '' }}
+          AZURE_AI_FOUNDRY_LOCATION=${{ vars.AZURE_AI_FOUNDRY_LOCATION || '' }}
+          AZURE_PSQL_LOCATION=${{ vars.AZURE_PSQL_LOCATION || '' }}
+          AZURE_COSMOS_LOCATION=${{ vars.AZURE_COSMOS_LOCATION || '' }}
+          AZURE_PE_LOCATION=${{ vars.AZURE_PE_LOCATION || '' }}
+          AZURE_PE_RESOURCE_GROUP_NAME=${{ vars.AZURE_PE_RESOURCE_GROUP_NAME || '' }}
+          EOF
+
+          azd provision --preview --no-prompt -e "$AZURE_ENV_NAME" | tee preview.txt
+          {
+            echo "## azd provision --preview (sandbox)"
+            echo
+            echo '```'
+            tail -n 300 preview.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

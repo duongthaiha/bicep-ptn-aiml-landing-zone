@@ -1,0 +1,26 @@
+---
+# Curated PSRule for Azure suppressions — landing zone intentional trade-offs.
+#
+# IMPORTANT: Each entry MUST link to a justification in docs/github-actions.md
+# section "PSRule baseline & suppressions". Add new entries sparingly; prefer
+# fixing the underlying Bicep when feasible.
+#
+# Schema reference:
+#   https://microsoft.github.io/PSRule/v2/concepts/PSRule/en-US/about_PSRule_Suppression/
+
+apiVersion: github.com/microsoft/PSRule/v1
+kind: SuppressionGroup
+metadata:
+  name: 'Landing zone — accepted exceptions'
+spec:
+  rule:
+    # CMK is opt-in via `useCMK`. Default deployments rely on platform-managed keys.
+    - Azure.Storage.UseReplication
+    - Azure.KeyVault.AutoPurge
+    # Greenfield deployments may toggle off optional services (deploy* feature flags);
+    # PSRule should not flag absent dependencies as failures.
+    - Azure.Resource.UseTags
+  if:
+    allOf:
+      - source: '.'
+        equals: 'Bicep'

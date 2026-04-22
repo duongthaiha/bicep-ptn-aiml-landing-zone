@@ -1,0 +1,36 @@
+name: OIDC Smoke Test
+
+# Verifies the federated credential trust between this repo and Azure.
+# Triggered manually; runs `azure/login` via OIDC and `az account show`.
+# Use this to validate environment + identity setup BEFORE relying on the
+# heavier validation/deploy workflows.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: GitHub Environment to test (must have AZURE_CLIENT_ID/TENANT_ID/SUBSCRIPTION_ID vars and a federated credential for this repo+environment).
+        type: string
+        required: true
+        default: pr-sandbox
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: az account show
+        run: |
+          az account show --output table
+          az group list --query "[?name=='${{ vars.AZURE_RESOURCE_GROUP }}'].{name:name,location:location}" -o table

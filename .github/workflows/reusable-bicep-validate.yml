@@ -1,0 +1,147 @@
+name: Reusable - Bicep validate
+
+# Reusable workflow:
+#   - Always runs static checks: bicep build, bicep format --verify, PSRule for Azure,
+#     manifest.json schema check.
+#   - When `runPreview: true`, runs `azd provision --preview` against the caller-provided
+#     environment. The CALLER is responsible for performing OIDC `azure/login` BEFORE
+#     calling this workflow when runPreview=true (we do not federate credentials here).
+
+on:
+  workflow_call:
+    inputs:
+      runPreview:
+        description: When true, run `azd provision --preview` after static checks. Caller must have logged in to Azure via OIDC.
+        type: boolean
+        default: false
+      azdEnvName:
+        description: azd environment name to use when runPreview=true.
+        type: string
+        default: ''
+      location:
+        description: Azure location for the azd environment when runPreview=true.
+        type: string
+        default: ''
+      bicepVersion:
+        description: Bicep CLI version to install.
+        type: string
+        default: 'latest'
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    name: Static validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Bicep CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.bicepVersion }}" = "latest" ]; then
+            curl -sSL https://github.com/Azure/bicep/releases/latest/download/bicep-linux-x64 -o /usr/local/bin/bicep
+          else
+            curl -sSL "https://github.com/Azure/bicep/releases/download/${{ inputs.bicepVersion }}/bicep-linux-x64" -o /usr/local/bin/bicep
+          fi
+          chmod +x /usr/local/bin/bicep
+          bicep --version
+
+      - name: Bicep build (lint)
+        run: bicep build main.bicep --outfile /tmp/main.json
+
+      - name: Bicep format check
+        run: |
+          set -euo pipefail
+          # bicep format --verify exits non-zero on diff. Apply to all .bicep files.
+          mapfile -t files < <(git ls-files '*.bicep')
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No bicep files found"; exit 0
+          fi
+          fail=0
+          for f in "${files[@]}"; do
+            if ! bicep format --verify "$f"; then
+              echo "::error file=$f::bicep format check failed. Run 'bicep format $f' locally."
+              fail=1
+            fi
+          done
+          exit $fail
+
+      - name: Validate manifest.json schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, sys
+          required = {"tag": str, "repo": str, "ailz_tag": str, "components": list}
+          with open("manifest.json") as f:
+              m = json.load(f)
+          for k, t in required.items():
+              if k not in m:
+                  print(f"::error file=manifest.json::missing key: {k}")
+                  sys.exit(1)
+              if not isinstance(m[k], t):
+                  print(f"::error file=manifest.json::key {k} must be {t.__name__}")
+                  sys.exit(1)
+          # Conventionally tag and ailz_tag are kept in sync in this repo.
+          if m["tag"] != m["ailz_tag"]:
+              print(f"::warning file=manifest.json::tag ({m['tag']}) != ailz_tag ({m['ailz_tag']}). Release workflow keeps these in sync.")
+          PY
+
+      - name: PSRule for Azure
+        uses: microsoft/ps-rule@v2.9.0
+        with:
+          modules: 'PSRule.Rules.Azure'
+          inputType: 'repository'
+          baseline: 'Azure.Default'
+          option: '.github/ps-rule.yaml'
+          summary: true
+        # PSRule respects suppressions in .ps-rule/. Findings outside the curated baseline block the build.
+
+  preview:
+    name: azd preview
+    if: ${{ inputs.runPreview }}
+    runs-on: ubuntu-latest
+    needs: static
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${{ inputs.azdEnvName }}" ] || [ -z "${{ inputs.location }}" ]; then
+            echo "::error::azdEnvName and location are required when runPreview=true"
+            exit 1
+          fi
+
+      - name: Install azd
+        uses: Azure/setup-azd@v2.1.0
+
+      - name: azd env init
+        shell: bash
+        env:
+          AZURE_ENV_NAME: ${{ inputs.azdEnvName }}
+          AZURE_LOCATION: ${{ inputs.location }}
+        run: |
+          set -euo pipefail
+          azd env new "$AZURE_ENV_NAME" --location "$AZURE_LOCATION" --no-prompt --subscription "${AZURE_SUBSCRIPTION_ID:-}"
+
+      - name: azd provision --preview
+        shell: bash
+        env:
+          AZURE_ENV_NAME: ${{ inputs.azdEnvName }}
+        run: |
+          set -euo pipefail
+          azd provision --preview --no-prompt -e "$AZURE_ENV_NAME" | tee preview.txt
+          {
+            echo "## azd provision --preview"
+            echo
+            echo '```'
+            tail -n 200 preview.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

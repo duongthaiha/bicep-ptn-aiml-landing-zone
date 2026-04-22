@@ -1,0 +1,96 @@
+name: Release
+
+# Updates manifest.json (tag + ailz_tag) so the jumpbox `install.ps1` referenced by
+# the deployed VM extension matches the released code, then creates the Git tag and
+# GitHub Release. No Azure deployment is performed here.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Semver release version (e.g. 1.0.9). No leading 'v'.
+        type: string
+        required: true
+      prerelease:
+        description: Mark release as prerelease.
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate semver
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Invalid semver: $VERSION"
+            exit 1
+          fi
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "::error::Tag v$VERSION already exists"
+            exit 1
+          fi
+
+      - name: Update manifest.json
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os
+          v = "v" + os.environ["VERSION"]
+          with open("manifest.json") as f:
+              m = json.load(f)
+          m["tag"] = v
+          m["ailz_tag"] = v
+          with open("manifest.json", "w") as f:
+              json.dump(m, f, indent=2)
+              f.write("\n")
+          PY
+
+      - name: Commit manifest update
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if git diff --quiet manifest.json; then
+            echo "manifest.json already up to date"
+          else
+            git add manifest.json
+            git commit -m "chore(release): manifest.json -> v$VERSION"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
+
+      - name: Tag release
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          git tag -a "v$VERSION" -m "Release v$VERSION"
+          git push origin "v$VERSION"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
+          name: v${{ inputs.version }}
+          generate_release_notes: true
+          prerelease: ${{ inputs.prerelease }}

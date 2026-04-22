@@ -1,0 +1,132 @@
+name: Reusable - azd deploy
+
+# Reusable workflow for landing-zone deployment via `azd provision`.
+# Caller MUST:
+#   - Define a GitHub Environment matching `inputs.environment` with these variables:
+#       AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
+#       (Optional) AZURE_RESOURCE_GROUP, plus any landing-zone toggles
+#       (NETWORK_ISOLATION, USE_UAI, ENABLE_AGENTIC_RETRIEVAL, etc.) as env-level vars.
+#   - Federate the deploy Entra app to subject `repo:<owner>/<repo>:environment:<environment>`.
+#
+# This workflow does NOT manage Entra apps or RBAC. Use scripts/bootstrap-github-oidc.sh.
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: GitHub Environment name (dev/test/prod, etc.).
+        type: string
+        required: true
+      azdEnvName:
+        description: azd environment name (e.g. ailz-dev). Must be unique per RG.
+        type: string
+        required: true
+      location:
+        description: Azure location for the azd environment / RG (when greenfield).
+        type: string
+        required: true
+      additionalAzdEnvVars:
+        description: Newline-separated KEY=VALUE pairs to set via `azd env set` before provision.
+        type: string
+        default: ''
+    outputs:
+      azdOutputs:
+        description: JSON string of `azd env get-values` after provision.
+        value: ${{ jobs.deploy.outputs.azdOutputs }}
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    outputs:
+      azdOutputs: ${{ steps.outputs.outputs.azdOutputs }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install azd
+        uses: Azure/setup-azd@v2.1.0
+
+      - name: azd env init
+        shell: bash
+        env:
+          AZURE_ENV_NAME: ${{ inputs.azdEnvName }}
+          AZURE_LOCATION: ${{ inputs.location }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          set -euo pipefail
+          if ! azd env select "$AZURE_ENV_NAME" >/dev/null 2>&1; then
+            azd env new "$AZURE_ENV_NAME" --location "$AZURE_LOCATION" --subscription "$AZURE_SUBSCRIPTION_ID" --no-prompt
+          fi
+          azd env set AZURE_LOCATION "$AZURE_LOCATION" -e "$AZURE_ENV_NAME"
+
+      - name: Apply environment-level azd vars
+        shell: bash
+        env:
+          AZURE_ENV_NAME: ${{ inputs.azdEnvName }}
+          ENV_VARS_JSON: ${{ toJSON(vars) }}
+        run: |
+          set -euo pipefail
+          # Forward every environment-scoped variable into the azd env so that
+          # ${VAR} substitution in main.parameters.json resolves correctly.
+          python3 - <<'PY'
+          import json, os, subprocess
+          env_name = os.environ["AZURE_ENV_NAME"]
+          # Only forward azd-relevant variables (uppercase, non-empty).
+          allow_prefixes = ("AZURE_", "DEPLOY_", "NETWORK_", "USE_", "ENABLE_", "EXISTING_", "SIDE_")
+          data = json.loads(os.environ["ENV_VARS_JSON"])
+          for k, v in data.items():
+              if not isinstance(v, str) or not v:
+                  continue
+              if not k.isupper():
+                  continue
+              if not k.startswith(allow_prefixes):
+                  continue
+              subprocess.check_call(["azd", "env", "set", k, v, "-e", env_name])
+          PY
+
+      - name: Apply additional azd env vars
+        if: ${{ inputs.additionalAzdEnvVars != '' }}
+        shell: bash
+        env:
+          AZURE_ENV_NAME: ${{ inputs.azdEnvName }}
+          EXTRA: ${{ inputs.additionalAzdEnvVars }}
+        run: |
+          set -euo pipefail
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            key="${line%%=*}"; val="${line#*=}"
+            azd env set "$key" "$val" -e "$AZURE_ENV_NAME"
+          done <<< "$EXTRA"
+
+      - name: azd provision
+        shell: bash
+        env:
+          AZURE_ENV_NAME: ${{ inputs.azdEnvName }}
+        run: azd provision --no-prompt -e "$AZURE_ENV_NAME"
+
+      - name: Capture outputs
+        id: outputs
+        shell: bash
+        env:
+          AZURE_ENV_NAME: ${{ inputs.azdEnvName }}
+        run: |
+          set -euo pipefail
+          out=$(azd env get-values -e "$AZURE_ENV_NAME" --output json)
+          echo "azdOutputs<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$out" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"

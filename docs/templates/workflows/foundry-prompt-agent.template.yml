@@ -1,0 +1,98 @@
+# =====================================================================
+# TEMPLATE — Prompt Foundry agent deploy + evaluation. Inert upstream.
+#
+# Workflow shape:
+#   1. Create or update the prompt agent from `agent.yaml`.
+#   2. Run a batch evaluation against a curated dataset.
+#   3. Run prompt optimizer to propose improved instructions.
+#   4. Gate promotion on eval threshold; require manual approval to
+#      promote optimized prompt to higher environment.
+# =====================================================================
+
+name: Foundry prompt agent (template)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        options: [dev, test, prod]
+        default: dev
+      runOptimizer:
+        type: boolean
+        default: false
+      evalThreshold:
+        description: Minimum aggregate eval score required to mark green.
+        type: string
+        default: '0.8'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  agent:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Upsert prompt agent
+        shell: bash
+        env:
+          PROJECT_ENDPOINT: ${{ vars.FOUNDRY_PROJECT_ENDPOINT }}
+        run: |
+          set -euo pipefail
+          # Replace with concrete CLI / REST. Reference: agent.yaml
+          # az ai-foundry prompt-agent upsert --project-endpoint "$PROJECT_ENDPOINT" --file agent.yaml
+          echo "Upsert prompt agent placeholder"
+
+      - name: Run batch evaluation
+        id: eval
+        shell: bash
+        run: |
+          set -euo pipefail
+          # az ai-foundry eval run --dataset evals/dataset.jsonl --agent "${{ vars.AGENT_NAME }}" --output eval.json
+          score="0.85"
+          echo "score=$score" >> "$GITHUB_OUTPUT"
+
+      - name: Gate on eval threshold
+        shell: bash
+        env:
+          SCORE: ${{ steps.eval.outputs.score }}
+          THRESHOLD: ${{ inputs.evalThreshold }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, sys
+          score = float(os.environ["SCORE"])
+          threshold = float(os.environ["THRESHOLD"])
+          if score < threshold:
+              print(f"::error::eval score {score} below threshold {threshold}")
+              sys.exit(1)
+          print(f"eval score {score} >= threshold {threshold}")
+          PY
+
+      - name: Prompt optimizer
+        if: ${{ inputs.runOptimizer }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # az ai-foundry prompt-optimizer run --agent "${{ vars.AGENT_NAME }}" --dataset evals/dataset.jsonl --out optimized.yaml
+          echo "Optimizer placeholder"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: prompt-agent-${{ inputs.environment }}
+          path: |
+            eval.json
+            optimized.yaml
+          if-no-files-found: ignore

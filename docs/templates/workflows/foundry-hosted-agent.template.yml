@@ -1,0 +1,95 @@
+# =====================================================================
+# TEMPLATE — Hosted Foundry agent deploy. Inert in the upstream repo.
+#
+# Use in a CONSUMER repo that has an agent codebase + Dockerfile and an
+# already-provisioned landing zone (ACR + Foundry project + RBAC).
+#
+# Required environment variables (per GitHub Environment):
+#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
+#   AZURE_RESOURCE_GROUP, ACR_NAME, FOUNDRY_PROJECT_ENDPOINT, AGENT_NAME
+#
+# Required RBAC for the deploy identity:
+#   - AcrPush on the landing-zone ACR
+#   - Azure AI User on the Foundry project
+# =====================================================================
+
+name: Foundry hosted agent (template)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        options: [dev, test, prod]
+        default: dev
+      imageTag:
+        type: string
+        default: ''
+  # push:
+  #   branches: [main]
+  #   paths:
+  #     - 'agent/**'
+  #     - '.github/workflows/foundry-hosted-agent.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve image tag
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ inputs.imageTag }}"
+          [ -z "$tag" ] && tag="${GITHUB_SHA::12}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: ACR login
+        run: az acr login --name "${{ vars.ACR_NAME }}"
+
+      - name: Build and push image
+        shell: bash
+        env:
+          IMAGE: ${{ vars.ACR_NAME }}.azurecr.io/agents/${{ vars.AGENT_NAME }}:${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          docker build -t "$IMAGE" ./agent
+          docker push "$IMAGE"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+
+      - name: Create or update hosted agent
+        shell: bash
+        env:
+          PROJECT_ENDPOINT: ${{ vars.FOUNDRY_PROJECT_ENDPOINT }}
+          AGENT_NAME: ${{ vars.AGENT_NAME }}
+        run: |
+          set -euo pipefail
+          # Replace with your concrete CLI / REST invocation.
+          # Example (illustrative — see docs/github-actions.md):
+          # az ai-foundry agent upsert \
+          #   --project-endpoint "$PROJECT_ENDPOINT" \
+          #   --name "$AGENT_NAME" \
+          #   --image "$IMAGE" \
+          #   --identity systemAssigned
+          echo "Would deploy $IMAGE to $PROJECT_ENDPOINT as $AGENT_NAME"
+
+      - name: Smoke invoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Replace with concrete invoke + assertion.
+          echo "Invoke smoke test placeholder"

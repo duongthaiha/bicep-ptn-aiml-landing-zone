@@ -8,6 +8,8 @@ The Azure AI Landing Zone is an enterprise-scale, production-ready reference arc
 
 ## How to Deploy
 
+> Looking for CI/CD? See [`docs/github-actions.md`](docs/github-actions.md) for the GitHub Actions setup, OIDC bootstrap, networking options, WAF mapping, and the three Foundry agent workflow patterns (infra / hosted agent / prompt agent).
+
 Choose your preferred deployment method based on project requirements and environment constraints.
 
 ### Prerequisites
