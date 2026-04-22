@@ -1,0 +1,80 @@
+name: Sandbox azd preview
+
+# Manually-dispatched workflow that runs `azd provision --preview` against the
+# pr-sandbox environment. Useful for ad-hoc testing of Bicep changes without
+# opening a PR.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: string
+        default: pr-sandbox
+      networkIsolation:
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install azd
+        uses: Azure/setup-azd@v2.1.0
+
+      - name: azd env init
+        shell: bash
+        env:
+          AZD_ENV: sbx-${{ github.run_id }}
+          LOC: ${{ vars.AZURE_LOCATION }}
+          SUB: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          PRINCIPAL: ${{ vars.AZURE_PRINCIPAL_ID }}
+          NETISO: ${{ inputs.networkIsolation }}
+        run: |
+          set -euo pipefail
+          azd env new "$AZD_ENV" --location "$LOC" --subscription "$SUB" --no-prompt
+          azd env set AZURE_LOCATION "$LOC" -e "$AZD_ENV"
+          azd env set AZURE_PRINCIPAL_ID "$PRINCIPAL" -e "$AZD_ENV"
+          azd env set NETWORK_ISOLATION "$NETISO" -e "$AZD_ENV"
+          azd env set USE_UAI false -e "$AZD_ENV"
+          azd env set USE_CAPP_API_KEY false -e "$AZD_ENV"
+          azd env set ENABLE_AGENTIC_RETRIEVAL false -e "$AZD_ENV"
+          azd env set DEPLOY_VM_KEY_VAULT false -e "$AZD_ENV"
+          azd env set USE_EXISTING_VNET false -e "$AZD_ENV"
+          azd env set DEPLOY_SUBNETS false -e "$AZD_ENV"
+          azd env set SIDE_BY_SIDE false -e "$AZD_ENV"
+          azd env set EXISTING_VNET_RESOURCE_ID "" -e "$AZD_ENV"
+          azd env set AZURE_AI_FOUNDRY_LOCATION "$LOC" -e "$AZD_ENV"
+          azd env set AZURE_PSQL_LOCATION "$LOC" -e "$AZD_ENV"
+          azd env set AZURE_COSMOS_LOCATION "$LOC" -e "$AZD_ENV"
+          azd env set AZURE_PE_LOCATION "$LOC" -e "$AZD_ENV"
+          azd env set AZURE_PE_RESOURCE_GROUP_NAME "" -e "$AZD_ENV"
+          # Point AZURE_RESOURCE_GROUP at the sandbox RG so azd reuses it
+          azd env set AZURE_RESOURCE_GROUP "${{ vars.AZURE_RESOURCE_GROUP }}" -e "$AZD_ENV"
+          echo "AZD_ENV=$AZD_ENV" >> "$GITHUB_ENV"
+
+      - name: azd provision --preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          azd provision --preview --no-prompt -e "$AZD_ENV" 2>&1 | tee preview.txt
+          {
+            echo "## azd provision --preview"
+            echo
+            echo '```'
+            tail -n 400 preview.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
