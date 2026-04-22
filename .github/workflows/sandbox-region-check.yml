@@ -31,7 +31,7 @@ jobs:
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Probe regions
-        shell: bash
+        shell: bash {0}
         env:
           REGIONS: ${{ inputs.regions }}
           SUB: ${{ vars.AZURE_SUBSCRIPTION_ID }}
