@@ -1,0 +1,92 @@
+name: Sandbox region availability check
+
+# Probes regions for the SKUs/quotas this landing zone needs.
+# Output goes to the job summary.
+
+on:
+  workflow_dispatch:
+    inputs:
+      regions:
+        description: 'Comma-separated regions to probe'
+        type: string
+        default: 'eastus,eastus2,westus3,northcentralus,southcentralus,westeurope,northeurope,uksouth,swedencentral,australiaeast,japaneast'
+      environment:
+        type: string
+        default: pr-sandbox
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Probe regions
+        shell: bash
+        env:
+          REGIONS: ${{ inputs.regions }}
+          SUB: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          set -uo pipefail
+          IFS=',' read -ra LIST <<< "$REGIONS"
+
+          # Helper: check whether RP+resourceType is available in region (returns 0 if available)
+          rp_available() {
+            local rp=$1 type=$2 region=$3
+            az provider show -n "$rp" \
+              --query "resourceTypes[?resourceType=='$type'].locations | [0]" -o tsv 2>/dev/null \
+              | tr '[:upper:]' '[:lower:]' | tr -d ' ' | grep -q "$(echo $region | tr -d ' ' | tr '[:upper:]' '[:lower:]')"
+          }
+
+          # AI Search: list SKUs available in region
+          search_skus() {
+            local region=$1
+            az rest --method get \
+              --url "https://management.azure.com/subscriptions/$SUB/providers/Microsoft.Search/locations/$region/skus?api-version=2023-11-01" \
+              --query "value[].sku.name" -o tsv 2>/dev/null | tr '\n' ',' | sed 's/,$//'
+          }
+
+          # Cognitive Services / AI Foundry: list deployable model SKUs (proxy for capacity)
+          cog_quotas() {
+            local region=$1
+            az cognitiveservices usage list -l "$region" --query "length(@)" -o tsv 2>/dev/null || echo 0
+          }
+
+          # Cosmos DB capability
+          cosmos_available() {
+            local region=$1
+            az cosmosdb locations show --location "$region" --query "name" -o tsv 2>/dev/null
+          }
+
+          {
+            echo "## Region availability probe"
+            echo ""
+            echo "| Region | AI Search SKUs | AI Foundry (CogSvc) | Cosmos DB | Container Apps Env |"
+            echo "|---|---|---|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          for r in "${LIST[@]}"; do
+            r=$(echo "$r" | xargs)
+            search=$(search_skus "$r")
+            [ -z "$search" ] && search="❌ none"
+            cog=$(cog_quotas "$r")
+            [ "$cog" = "0" ] && cog="❌" || cog="✅ ($cog quota items)"
+            cosmos=$(cosmos_available "$r")
+            [ -z "$cosmos" ] && cosmos="❌" || cosmos="✅"
+            cae="✅"
+            rp_available "Microsoft.App" "managedEnvironments" "$r" || cae="❌"
+            echo "| $r | $search | $cog | $cosmos | $cae |" >> "$GITHUB_STEP_SUMMARY"
+            echo "$r → search=$search cog=$cog cosmos=$cosmos cae=$cae"
+          done
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "_Note: this probes SKU/quota availability metadata. Actual capacity (e.g. \`InsufficientResourcesAvailable\`) is real-time and may still vary at deploy time._" >> "$GITHUB_STEP_SUMMARY"
