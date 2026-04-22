@@ -13,6 +13,11 @@ on:
       networkIsolation:
         type: boolean
         default: false
+      mode:
+        description: preview (no-op what-if) or provision (real deployment - creates Azure resources!)
+        type: choice
+        options: [preview, provision]
+        default: preview
 
 permissions:
   id-token: write
@@ -78,15 +83,19 @@ jobs:
           azd env set AZURE_RESOURCE_GROUP "${{ vars.AZURE_RESOURCE_GROUP }}" -e "$AZD_ENV"
           echo "AZD_ENV=$AZD_ENV" >> "$GITHUB_ENV"
 
-      - name: azd provision --preview
+      - name: azd provision
         shell: bash
         run: |
           set -euo pipefail
-          azd provision --preview --no-prompt -e "$AZD_ENV" 2>&1 | tee preview.txt
+          if [ "${{ inputs.mode }}" = "provision" ]; then
+            azd provision --no-prompt -e "$AZD_ENV" 2>&1 | tee provision.txt
+          else
+            azd provision --preview --no-prompt -e "$AZD_ENV" 2>&1 | tee provision.txt
+          fi
           {
-            echo "## azd provision --preview"
+            echo "## azd ${{ inputs.mode }}"
             echo
             echo '```'
-            tail -n 400 preview.txt
+            tail -n 400 provision.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
