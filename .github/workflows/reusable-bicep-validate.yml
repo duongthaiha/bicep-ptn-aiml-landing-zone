@@ -126,6 +126,13 @@ jobs:
       - name: Install azd
         uses: Azure/setup-azd@v2.1.0
 
+      - name: azd auth login (OIDC)
+        run: |
+          azd auth login \
+            --client-id "$AZURE_CLIENT_ID" \
+            --federated-credential-provider github \
+            --tenant-id "$AZURE_TENANT_ID"
+
       - name: azd env init
         shell: bash
         env:
