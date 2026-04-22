@@ -1,9 +1,11 @@
 """Evaluate the customer-support-faq agent's instructions against the dataset.
 
 We exercise the underlying chat model directly using the same instructions the
-prompt agent ships with. This decouples the gating eval from the agent runtime
-(which is in preview) while still validating the prompt + model combination
-that the agent will execute.
+prompt agent ships with, then ask the same model to grade each answer on
+relevance and groundedness with a 1-5 LLM-as-judge prompt. This avoids the
+azure-ai-evaluation library's hard-coded ``max_tokens`` parameter, which is
+rejected by gpt-5 / o-series deployments (they only accept
+``max_completion_tokens``).
 
 Writes:
   eval.json  Aggregate + per-row scores.
@@ -16,12 +18,12 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import statistics
 import sys
 from pathlib import Path
 
 import yaml
-from azure.ai.evaluation import GroundednessEvaluator, RelevanceEvaluator
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from openai import AzureOpenAI
 
@@ -32,6 +34,27 @@ DATASET = HERE / "dataset.jsonl"
 RESULT = HERE / "eval.json"
 SCOPE = "https://cognitiveservices.azure.com/.default"
 
+JUDGE_TEMPLATE = """You are a strict evaluator. Score the assistant ANSWER on
+the {dimension} criterion using an integer from 1 (worst) to 5 (best).
+
+{criterion}
+
+QUESTION:
+{query}
+
+GROUND TRUTH:
+{truth}
+
+ASSISTANT ANSWER:
+{answer}
+
+Respond with a single integer 1-5 and nothing else."""
+
+CRITERIA = {
+    "relevance": "Relevance: does the answer directly address the question?",
+    "groundedness": "Groundedness: are the factual claims supported by the ground truth?",
+}
+
 
 def _load_agent_spec() -> dict:
     spec = yaml.safe_load((AGENT_DIR / "agent.yaml").read_text(encoding="utf-8"))
@@ -40,18 +63,40 @@ def _load_agent_spec() -> dict:
 
 
 def _load_dataset() -> list[dict]:
-    return [json.loads(l) for l in DATASET.read_text(encoding="utf-8").splitlines() if l.strip()]
+    return [json.loads(line) for line in DATASET.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
 def _account_endpoint(project_endpoint: str) -> str:
-    # https://acct.services.ai.azure.com/api/projects/proj -> https://acct.services.ai.azure.com/
     return project_endpoint.split("/api/projects/")[0].rstrip("/") + "/"
+
+
+def _ask(client: AzureOpenAI, model: str, system: str, user: str) -> str:
+    completion = client.chat.completions.create(
+        model=model,
+        max_completion_tokens=2048,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+    )
+    return completion.choices[0].message.content or ""
+
+
+def _score(client: AzureOpenAI, model: str, dimension: str, **kwargs) -> int:
+    raw = _ask(
+        client,
+        model,
+        system="You are an evaluation assistant.",
+        user=JUDGE_TEMPLATE.format(dimension=dimension, criterion=CRITERIA[dimension], **kwargs),
+    )
+    match = re.search(r"[1-5]", raw)
+    return int(match.group(0)) if match else 0
 
 
 def main() -> int:
     project_endpoint = os.environ["FOUNDRY_PROJECT_ENDPOINT"]
     threshold = float(os.environ.get("EVAL_THRESHOLD", "3.5"))
-    api_version = os.environ.get("EVAL_API_VERSION", "2024-10-21")
+    api_version = os.environ.get("EVAL_API_VERSION", "2025-01-01-preview")
 
     spec = _load_agent_spec()
     model = spec["model"]
@@ -60,35 +105,20 @@ def main() -> int:
     cred = DefaultAzureCredential()
     azure_endpoint = _account_endpoint(project_endpoint)
     token_provider = get_bearer_token_provider(cred, SCOPE)
-    chat = AzureOpenAI(
+    client = AzureOpenAI(
         azure_endpoint=azure_endpoint,
         api_version=api_version,
         azure_ad_token_provider=token_provider,
     )
 
-    model_config = {
-        "azure_endpoint": azure_endpoint,
-        "azure_deployment": model,
-        "api_version": api_version,
-    }
-    relevance = RelevanceEvaluator(model_config=model_config)
-    groundedness = GroundednessEvaluator(model_config=model_config)
-
     rows: list[dict] = []
     for case in _load_dataset():
         query = case["query"]
         truth = case["ground_truth"]
-        completion = chat.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": instructions},
-                {"role": "user", "content": query},
-            ],
-        )
-        answer = completion.choices[0].message.content or ""
+        answer = _ask(client, model, instructions, query)
         scores = {
-            "relevance": relevance(query=query, response=answer).get("relevance", 0),
-            "groundedness": groundedness(response=answer, context=truth).get("groundedness", 0),
+            dim: _score(client, model, dim, query=query, truth=truth, answer=answer)
+            for dim in CRITERIA
         }
         rows.append({"query": query, "answer": answer, "ground_truth": truth, "scores": scores})
         print(f"- {query[:60]:60s}  rel={scores['relevance']}  grd={scores['groundedness']}")
@@ -96,6 +126,7 @@ def main() -> int:
     flat = [s for r in rows for s in r["scores"].values()]
     mean = round(statistics.mean(flat), 3) if flat else 0.0
     summary = {
+        "model": model,
         "threshold": threshold,
         "mean_score": mean,
         "passed": mean >= threshold,
