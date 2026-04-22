@@ -56,8 +56,6 @@ def main() -> int:
     spec = _load_agent_spec()
     model = spec["model"]
     instructions = spec["instructions"]
-    temperature = float(spec.get("temperature", 0.2))
-    top_p = float(spec.get("top_p", 0.95))
 
     cred = DefaultAzureCredential()
     azure_endpoint = _account_endpoint(project_endpoint)
@@ -82,8 +80,6 @@ def main() -> int:
         truth = case["ground_truth"]
         completion = chat.chat.completions.create(
             model=model,
-            temperature=temperature,
-            top_p=top_p,
             messages=[
                 {"role": "system", "content": instructions},
                 {"role": "user", "content": query},

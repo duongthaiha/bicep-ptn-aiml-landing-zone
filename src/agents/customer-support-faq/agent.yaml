@@ -7,8 +7,6 @@ description: >
   pattern (this repository). Pure prompt agent – no tools, no retrieval.
 model: chat
 instructions_file: instructions.md
-temperature: 0.2
-top_p: 0.95
 metadata:
   source_repo: bicep-ptn-aiml-landing-zone
   managed_by: github-actions
