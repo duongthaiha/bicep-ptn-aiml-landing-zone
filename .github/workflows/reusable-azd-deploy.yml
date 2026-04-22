@@ -43,6 +43,11 @@ jobs:
     name: Deploy (${{ inputs.environment }})
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
+    env:
+      # azd authenticates to ARM using GitHub OIDC; these are required.
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
     outputs:
       azdOutputs: ${{ steps.outputs.outputs.azdOutputs }}
     steps:
