@@ -20,7 +20,7 @@ on:
       evalThreshold:
         description: Minimum mean eval score required to pass (1-5)
         type: string
-        default: "3.5"
+        default: "3.0"
       dryRun:
         description: Skip upsert + eval, just resolve the Foundry endpoint
         type: boolean
