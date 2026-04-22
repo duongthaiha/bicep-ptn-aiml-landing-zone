@@ -40,13 +40,35 @@ jobs:
           echo "## Resources in $RG before delete" >> "$GITHUB_STEP_SUMMARY"
           az resource list -g "$RG" --query "[].{name:name,type:type}" -o table | tee -a "$GITHUB_STEP_SUMMARY" || true
           echo
-          # Delete all resources but keep the RG (so federation/RBAC stay intact)
-          ids=$(az resource list -g "$RG" --query "[].id" -o tsv)
-          if [ -z "$ids" ]; then
-            echo "Nothing to delete."
-            exit 0
-          fi
-          # Delete in batches to avoid command length limits
-          xargs -d '\n' -n 50 az resource delete --ids <<< "$ids" || true
+
+          # Best-effort: purge child resources of parents that block deletion (e.g. private endpoints, locks)
+          for lock in $(az lock list -g "$RG" --query "[].id" -o tsv 2>/dev/null || true); do
+            az lock delete --ids "$lock" || true
+          done
+
+          # Multi-pass parallel async delete (some resources have ordering deps)
+          for pass in 1 2 3 4 5 6 7 8 9 10; do
+            ids=$(az resource list -g "$RG" --query "[].id" -o tsv)
+            if [ -z "$ids" ]; then
+              echo "RG empty after pass $((pass-1))."
+              break
+            fi
+            echo "Pass $pass: $(echo "$ids" | wc -l) resources remaining; firing parallel deletes..."
+            echo "$ids" | xargs -I{} -P 20 -n 1 bash -c 'az resource delete --ids "$1" --no-wait 2>/dev/null || az resource delete --ids "$1" 2>/dev/null || true' _ {}
+            # Wait for async deletes to converge
+            for i in $(seq 1 30); do
+              count=$(az resource list -g "$RG" --query "length(@)" -o tsv 2>/dev/null || echo 0)
+              if [ "$count" = "0" ]; then break; fi
+              echo "  ... $count resources still present (wait ${i}/30)"
+              sleep 20
+            done
+          done
+
+          # Purge soft-deleted Key Vaults to allow re-deploy with same name
+          for kv in $(az keyvault list-deleted --query "[?properties.location && contains(properties.vault, '$RG')].name" -o tsv 2>/dev/null || true); do
+            echo "Purging soft-deleted KV: $kv"
+            az keyvault purge --name "$kv" --no-wait || true
+          done
+
           echo "## Remaining resources" >> "$GITHUB_STEP_SUMMARY"
           az resource list -g "$RG" -o table | tee -a "$GITHUB_STEP_SUMMARY" || true
