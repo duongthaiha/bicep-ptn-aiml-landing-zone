@@ -70,7 +70,7 @@ jobs:
 
           SUB=$(az account show --query id -o tsv)
           PROJECTS_URL="https://management.azure.com/subscriptions/${SUB}/resourceGroups/${RG}/providers/Microsoft.CognitiveServices/accounts/${ACCOUNT}/projects?api-version=2025-04-01-preview"
-          PROJECT=$(az rest --method get --url "$PROJECTS_URL" --query "value[0].name" -o tsv 2>/dev/null || true)
+          PROJECT=$(az rest --method get --url "$PROJECTS_URL" --query "value[0].name" -o tsv 2>/dev/null | awk -F/ '{print $NF}' || true)
 
           if [ -z "$PROJECT" ] || [ "$PROJECT" = "null" ]; then
             echo "::error::Foundry account '$ACCOUNT' has no projects. Re-provision the landing zone."
