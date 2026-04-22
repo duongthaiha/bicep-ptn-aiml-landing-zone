@@ -68,22 +68,19 @@ jobs:
             exit 1
           fi
 
-          ENDPOINT=$(az cognitiveservices account show -g "$RG" -n "$ACCOUNT" \
-            --query "properties.endpoints.\"AI Foundry API\"" -o tsv 2>/dev/null || true)
+          SUB=$(az account show --query id -o tsv)
+          PROJECTS_URL="https://management.azure.com/subscriptions/${SUB}/resourceGroups/${RG}/providers/Microsoft.CognitiveServices/accounts/${ACCOUNT}/projects?api-version=2025-04-01-preview"
+          PROJECT=$(az rest --method get --url "$PROJECTS_URL" --query "value[0].name" -o tsv 2>/dev/null || true)
 
-          if [ -z "$ENDPOINT" ] || [ "$ENDPOINT" = "null" ]; then
-            HOST=$(az cognitiveservices account show -g "$RG" -n "$ACCOUNT" \
-              --query "properties.endpoint" -o tsv)
-            PROJECT=$(az resource list -g "$RG" \
-              --resource-type Microsoft.CognitiveServices/accounts/projects \
-              --query "[?starts_with(name,'${ACCOUNT}/')].name | [0]" -o tsv \
-              | awk -F/ '{print $2}')
-            if [ -z "$PROJECT" ]; then
-              echo "::error::Foundry account '$ACCOUNT' has no projects."
-              exit 1
-            fi
-            ENDPOINT="${HOST%/}/api/projects/${PROJECT}"
+          if [ -z "$PROJECT" ] || [ "$PROJECT" = "null" ]; then
+            echo "::error::Foundry account '$ACCOUNT' has no projects. Re-provision the landing zone."
+            exit 1
           fi
+
+          PROJECT_URL="https://management.azure.com/subscriptions/${SUB}/resourceGroups/${RG}/providers/Microsoft.CognitiveServices/accounts/${ACCOUNT}/projects/${PROJECT}?api-version=2025-04-01-preview"
+          ENDPOINT=$(az rest --method get --url "$PROJECT_URL" \
+            --query "properties.endpoints.\"AI Foundry API\"" -o tsv)
+          ENDPOINT="${ENDPOINT%/}"
 
           echo "Foundry account:  $ACCOUNT"
           echo "Project endpoint: $ENDPOINT"
