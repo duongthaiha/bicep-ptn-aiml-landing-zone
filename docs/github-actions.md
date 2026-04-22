@@ -132,6 +132,19 @@ These are deliberately separated so a consumer can adopt only what they need. Te
 - Required RBAC: **Azure AI User** on the Foundry project.
 - Inputs: `runOptimizer`, `evalThreshold`.
 
+### 5.4 Working example: `customer-support-faq`
+A runnable instance of pattern 5.3 lives in this repo:
+
+- Agent definition: [`src/agents/customer-support-faq/`](../src/agents/customer-support-faq/)
+  - `agent.yaml` + `instructions.md` – prompt-only agent on the `chat` deployment.
+  - `upsert.py` – idempotent create/update via `azure-ai-projects` and `DefaultAzureCredential`.
+  - `evals/eval.py` – Relevance + Groundedness scoring with `azure-ai-evaluation`, threshold-gated.
+- Workflow: [`.github/workflows/deploy-prompt-agent.yml`](../.github/workflows/deploy-prompt-agent.yml)
+  - Resolves the Foundry endpoint from the `aif-*` account in the env's resource group (no extra config).
+  - Adds an idempotent **Azure AI Developer** role assignment for the workflow service principal.
+  - Inputs: `environment`, `agentDir`, `evalThreshold`, `dryRun`.
+  - Pre-req: run `Sandbox azd preview` with `mode=provision` first; the workflow self-checks and fails clean otherwise.
+
 ---
 
 ## 6. WAF pillar mapping

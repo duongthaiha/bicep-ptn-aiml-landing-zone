@@ -1,0 +1,8 @@
+{"query": "Which file is the main Bicep entrypoint?", "ground_truth": "main.bicep is the orchestrator and is deployed at resource-group scope."}
+{"query": "How do I enable network isolation?", "ground_truth": "Set the networkIsolation parameter to true in main.parameters.json or via azd env set NETWORK_ISOLATION true."}
+{"query": "What identity options are supported?", "ground_truth": "System-assigned managed identity by default, or user-assigned managed identity by setting useUAI to true."}
+{"query": "Which feature flag controls Azure AI Foundry deployment?", "ground_truth": "deployAiFoundry toggles the AI Foundry account and project."}
+{"query": "How do consumers reuse this landing zone?", "ground_truth": "Add it as a git submodule at infra/ pinned to a release tag, then override main.parameters.json and manifest.json from the consumer repo."}
+{"query": "What does manifest.json control?", "ground_truth": "It carries landing-zone release metadata (tag, repo, ailz_tag) and an optional components array used by the jumpbox install.ps1 bootstrap."}
+{"query": "Where are role assignments defined?", "ground_truth": "Role assignments live in modules/security/* with role IDs centralised in constants/constants.bicep."}
+{"query": "How do I deploy the landing zone end to end?", "ground_truth": "Run az login, azd auth login, then azd provision; main.parameters.json and azd env vars drive parameterisation."}

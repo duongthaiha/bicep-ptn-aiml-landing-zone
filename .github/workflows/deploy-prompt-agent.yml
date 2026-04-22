@@ -1,0 +1,146 @@
+name: Deploy prompt agent
+
+# Real working example: builds & evaluates the customer-support-faq agent
+# defined under src/agents/customer-support-faq/ against the Foundry project
+# provisioned by this landing zone.
+#
+# Pre-req: the landing zone must already be provisioned in the target
+# environment's resource group (run `Sandbox azd preview` with mode=provision).
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: string
+        default: pr-sandbox
+      agentDir:
+        description: Path to the agent directory
+        type: string
+        default: src/agents/customer-support-faq
+      evalThreshold:
+        description: Minimum mean eval score required to pass (1-5)
+        type: string
+        default: "3.5"
+      dryRun:
+        description: Skip upsert + eval, just resolve the Foundry endpoint
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      AGENT_DIR: ${{ inputs.agentDir }}
+      EVAL_THRESHOLD: ${{ inputs.evalThreshold }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve Foundry project endpoint
+        id: foundry
+        shell: bash
+        run: |
+          set -euo pipefail
+          RG="$AZURE_RESOURCE_GROUP"
+
+          ACCOUNT=$(az resource list -g "$RG" \
+            --resource-type Microsoft.CognitiveServices/accounts \
+            --query "[?starts_with(name,'aif-')].name | [0]" -o tsv || true)
+
+          if [ -z "$ACCOUNT" ]; then
+            echo "::error::No AI Foundry account (aif-*) found in resource group '$RG'."
+            echo "::error::Run the 'Sandbox azd preview' workflow with mode=provision first."
+            exit 1
+          fi
+
+          ENDPOINT=$(az cognitiveservices account show -g "$RG" -n "$ACCOUNT" \
+            --query "properties.endpoints.\"AI Foundry API\"" -o tsv 2>/dev/null || true)
+
+          if [ -z "$ENDPOINT" ] || [ "$ENDPOINT" = "null" ]; then
+            HOST=$(az cognitiveservices account show -g "$RG" -n "$ACCOUNT" \
+              --query "properties.endpoint" -o tsv)
+            PROJECT=$(az resource list -g "$RG" \
+              --resource-type Microsoft.CognitiveServices/accounts/projects \
+              --query "[?starts_with(name,'${ACCOUNT}/')].name | [0]" -o tsv \
+              | awk -F/ '{print $2}')
+            if [ -z "$PROJECT" ]; then
+              echo "::error::Foundry account '$ACCOUNT' has no projects."
+              exit 1
+            fi
+            ENDPOINT="${HOST%/}/api/projects/${PROJECT}"
+          fi
+
+          echo "Foundry account:  $ACCOUNT"
+          echo "Project endpoint: $ENDPOINT"
+          echo "endpoint=$ENDPOINT" >> "$GITHUB_OUTPUT"
+          echo "account=$ACCOUNT" >> "$GITHUB_OUTPUT"
+
+      - name: Grant Azure AI Developer on Foundry account (idempotent)
+        shell: bash
+        env:
+          ACCOUNT: ${{ steps.foundry.outputs.account }}
+          PRINCIPAL_ID: ${{ vars.AZURE_PRINCIPAL_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PRINCIPAL_ID:-}" ]; then
+            echo "AZURE_PRINCIPAL_ID not set; skipping role assignment."
+            exit 0
+          fi
+          SCOPE=$(az resource show -g "$AZURE_RESOURCE_GROUP" -n "$ACCOUNT" \
+            --resource-type Microsoft.CognitiveServices/accounts --query id -o tsv)
+          az role assignment create \
+            --assignee-object-id "$PRINCIPAL_ID" \
+            --assignee-principal-type ServicePrincipal \
+            --role "Azure AI Developer" \
+            --scope "$SCOPE" 2>&1 | grep -v "already exists" || true
+
+      - name: Setup Python
+        if: ${{ inputs.dryRun != true }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        if: ${{ inputs.dryRun != true }}
+        shell: bash
+        run: pip install -r "$AGENT_DIR/requirements.txt"
+
+      - name: Upsert agent
+        if: ${{ inputs.dryRun != true }}
+        shell: bash
+        env:
+          FOUNDRY_PROJECT_ENDPOINT: ${{ steps.foundry.outputs.endpoint }}
+        run: python "$AGENT_DIR/upsert.py"
+
+      - name: Run evaluation
+        if: ${{ inputs.dryRun != true }}
+        id: eval
+        shell: bash
+        env:
+          FOUNDRY_PROJECT_ENDPOINT: ${{ steps.foundry.outputs.endpoint }}
+        run: python "$AGENT_DIR/evals/eval.py"
+
+      - name: Upload eval artifact
+        if: ${{ always() && inputs.dryRun != true }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-${{ github.run_id }}
+          path: |
+            ${{ inputs.agentDir }}/agent.id
+            ${{ inputs.agentDir }}/evals/eval.json
+          if-no-files-found: warn

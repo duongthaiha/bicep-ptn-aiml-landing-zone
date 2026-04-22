@@ -1,0 +1,14 @@
+# Prompt agent definition consumed by upsert.py.
+# Model deployment name must match a deployment that exists on the
+# Foundry project (the landing zone creates one named "chat" by default).
+name: customer-support-faq
+description: >
+  Answers frequently asked questions about the Azure AI/ML landing zone
+  pattern (this repository). Pure prompt agent – no tools, no retrieval.
+model: chat
+instructions_file: instructions.md
+temperature: 0.2
+top_p: 0.95
+metadata:
+  source_repo: bicep-ptn-aiml-landing-zone
+  managed_by: github-actions
