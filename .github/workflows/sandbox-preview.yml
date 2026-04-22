@@ -65,6 +65,7 @@ jobs:
           azd env new "$AZD_ENV" --location "$LOC" --subscription "$SUB" --no-prompt
           azd env set AZURE_LOCATION "$LOC" -e "$AZD_ENV"
           azd env set AZURE_PRINCIPAL_ID "$PRINCIPAL" -e "$AZD_ENV"
+          azd env set AZURE_PRINCIPAL_TYPE "ServicePrincipal" -e "$AZD_ENV"
           azd env set NETWORK_ISOLATION "$NETISO" -e "$AZD_ENV"
           azd env set USE_UAI false -e "$AZD_ENV"
           azd env set USE_CAPP_API_KEY false -e "$AZD_ENV"

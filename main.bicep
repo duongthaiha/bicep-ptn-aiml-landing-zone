@@ -70,6 +70,11 @@ param cosmosLocation string = resourceGroup().location
 param principalId string
 
 @description('Principal type for role assignments. This can be "User", "ServicePrincipal", or "Group".')
+@allowed([
+  'User'
+  'ServicePrincipal'
+  'Group'
+])
 param principalType string = 'User'
 
 @description('Tags to apply to all resources in the deployment')

@@ -10,6 +10,7 @@
     "cosmosLocation":                        { "value": "${AZURE_COSMOS_LOCATION}" },
     "deploymentTags":                      { "value": {} },
     "principalId":                         { "value": "${AZURE_PRINCIPAL_ID}" },
+    "principalType":                       { "value": "${AZURE_PRINCIPAL_TYPE=User}" },
 
     "networkIsolation":                    { "value": "${NETWORK_ISOLATION}" },
     "privateEndpointLocation":             { "value": "${AZURE_PE_LOCATION}" },
